@@ -23,9 +23,14 @@ def init_db() -> None:
             f"CREATE INDEX IF NOT EXISTS ix_tender_emb_hnsw ON tender USING hnsw (embedding {ops})",
             f"CREATE INDEX IF NOT EXISTS ix_item_emb_hnsw ON tender_item USING hnsw (embedding {ops})",
         ]
+        # CREATE INDEX IF NOT EXISTS toma un candado que bloquea escrituras aunque el índice ya
+        # exista (y provoca deadlocks con la ingesta): solo se ejecuta si el índice falta.
         with engine.begin() as conn:
+            have = set(conn.execute(sa.text("SELECT indexname FROM pg_indexes WHERE schemaname = current_schema()")).scalars())
             for s in stmts:
-                conn.execute(sa.text(s))
+                name = s.split("IF NOT EXISTS ")[1].split(" ")[0]
+                if name not in have:
+                    conn.execute(sa.text(s))
 
 
 def drop_all() -> None:

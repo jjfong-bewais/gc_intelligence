@@ -4,6 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable
 
+import time
+
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -68,6 +70,17 @@ def load_records(records: Iterable[dict], known: dict[str, str] | None = None) -
 
 
 def _flush(buf: list[dict], stats: LoadStats) -> None:
+    """Un lote por transacción; reintenta si Postgres cancela por deadlock o corte de conexión."""
+    for attempt in range(5):
+        try:
+            return _flush_once(buf, stats)
+        except sa.exc.OperationalError:
+            if attempt == 4:
+                raise
+            time.sleep(2 * (attempt + 1))
+
+
+def _flush_once(buf: list[dict], stats: LoadStats) -> None:
     now = utcnow()
     ocids = [p["tender"]["ocid"] for p in buf]
     parties: dict[str, dict] = {}
