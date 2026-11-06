@@ -105,8 +105,8 @@ def parse_release(rel: dict) -> dict | None:
             "description": desc, "unspsc": str(cls),
             "quantity": _amount(it.get("quantity")),
             "unit": (it.get("unit") or {}).get("name"),
-            "search_text": normalize(desc), "embed_text": embed_text,
-            "text_hash": sha1(embed_text),
+            "search_text": "",  # no se usa en búsquedas; ahorra espacio
+            "embed_text": embed_text, "text_hash": sha1(embed_text),
         })
     classes = Counter(unspsc_class(i["unspsc"]) for i in items if i["unspsc"])
     unspsc_main = classes.most_common(1)[0][0] if classes else None
@@ -126,7 +126,7 @@ def parse_release(rel: dict) -> dict | None:
         "unit_name": unit_name, "n_tenderers": tdr.get("numberOfTenderers"),
         "n_items": len(items), "unspsc_main": unspsc_main,
         "release_date": rel.get("date"),
-        "search_text": normalize(f"{nog} {title} " + " ".join(i["description"] for i in items)),
+        "search_text": normalize(f"{nog} {title} " + " ".join(i["description"] for i in items))[:2000],
         "embed_text": tender_embed, "text_hash": sha1(tender_embed),
     }
 
@@ -192,6 +192,14 @@ def parse_release(rel: dict) -> dict | None:
                 "supplier_name": aw["supplier_name"],
                 "awarded_at": aw["date"] or row["published_at"],
             })
+
+    # Ahorro de espacio: solo se vectorizan los renglones que se consultan por ítem
+    # (concursos vigentes -> cruce con inventario; renglones con precio -> comparables).
+    if tdr.get("statusDetails") != "Vigente":
+        priced = {p["item_id"] for p in prices}
+        for it in items:
+            if it["id"] not in priced:
+                it["embed_text"], it["text_hash"] = "", sha1("")
 
     return {
         "tender": row, "items": items, "parties": list(parties.values()), "bids": bids,

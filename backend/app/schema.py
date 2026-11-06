@@ -18,7 +18,6 @@ def init_db() -> None:
         ops = "halfvec_cosine_ops" if settings.pgvector_type == "halfvec" else "vector_cosine_ops"
         stmts = [
             "CREATE INDEX IF NOT EXISTS ix_tender_search_trgm ON tender USING gin (search_text gin_trgm_ops)",
-            "CREATE INDEX IF NOT EXISTS ix_item_search_trgm ON tender_item USING gin (search_text gin_trgm_ops)",
             "CREATE INDEX IF NOT EXISTS ix_party_name_trgm ON party USING gin (name_norm gin_trgm_ops)",
             f"CREATE INDEX IF NOT EXISTS ix_tender_emb_hnsw ON tender USING hnsw (embedding {ops})",
             f"CREATE INDEX IF NOT EXISTS ix_item_emb_hnsw ON tender_item USING hnsw (embedding {ops})",
