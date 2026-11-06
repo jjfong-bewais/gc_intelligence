@@ -1,0 +1,8 @@
+.venv
+.node
+node_modules
+frontend
+demo
+.git
+**/__pycache__
+.env

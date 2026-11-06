@@ -1,0 +1,37 @@
+name: Ingesta y alertas
+on:
+  schedule:
+    - cron: "0 10 * * *"   # 04:00 Guatemala; los archivos se regeneran ~03:00
+  workflow_dispatch:
+    inputs:
+      months_back: { description: "Meses a revisar (0 = todo el año)", default: "2" }
+      force: { description: "Reprocesar aunque no hayan cambiado", type: boolean, default: false }
+concurrency: { group: ingest, cancel-in-progress: false }
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      EMBEDDINGS_PROVIDER: openai
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      MAIL_PROVIDER: resend
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      MAIL_FROM: ${{ vars.MAIL_FROM }}
+      SECRET_KEY: ${{ secrets.SECRET_KEY }}
+      APP_URL: ${{ vars.APP_URL }}
+      API_URL: ${{ vars.API_URL }}
+      DATA_YEAR: "2026"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip, cache-dependency-path: backend/requirements.txt }
+      - run: pip install -r backend/requirements.txt
+      - name: Ingesta + embeddings
+        run: |
+          cd backend
+          ARGS="--months-back ${{ inputs.months_back || '2' }}"
+          if [ "${{ inputs.force }}" = "true" ]; then ARGS="$ARGS --force"; fi
+          python -m app.cli ingest $ARGS
+      - name: Alertas por correo
+        run: cd backend && python -m app.cli alerts

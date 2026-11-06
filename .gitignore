@@ -1,0 +1,13 @@
+.venv/
+.node/
+node_modules/
+__pycache__/
+*.pyc
+.pytest_cache/
+.env
+frontend/dist/
+demo/*.db
+demo/*.db-*
+demo/outbox/
+.DS_Store
+_incoming.tgz
