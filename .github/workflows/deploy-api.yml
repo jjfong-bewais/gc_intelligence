@@ -2,7 +2,7 @@ name: Deploy API (Fly.io)
 on:
   push:
     branches: [main]
-    paths: ["backend/**", "fly.toml"]
+    paths: ["backend/**", "frontend/**", "fly.toml"]
   workflow_dispatch:
 concurrency: deploy-api
 jobs:
