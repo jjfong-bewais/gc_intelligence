@@ -1,7 +1,9 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { api, Tender } from "../api";
-import { dateTime, daysLeft, money } from "../format";
+import { closeLabel, daysLeft, money, nameCase, sentenceCase, supplierName } from "../format";
+import { IconBookmark, IconThumbDown, IconThumbUp } from "./icons";
 
 export const FAV_LABELS: Record<string, string> = {
   por_cotizar: "Por cotizar", cotizado: "Cotizado", ganado: "Ganado", perdido: "Perdido", descartado: "Descartado",
@@ -14,49 +16,76 @@ export function Feedback({ t, context }: { t: Tender; context: string }) {
     onSuccess: () => qc.invalidateQueries(),
   });
   return (
-    <span className="inline-flex gap-1">
-      <button title="Me interesa" className={`btn ${t.feedback > 0 ? "btn-primary" : ""}`} onClick={() => m.mutate(1)}>👍</button>
-      <button title="No me interesa" className={`btn ${t.feedback < 0 ? "btn-primary" : ""}`} onClick={() => m.mutate(-1)}>👎</button>
-    </span>
+    <>
+      <button type="button" aria-label="Me interesa" aria-pressed={t.feedback > 0} title="Me interesa"
+        className={`btn-icon ${t.feedback > 0 ? "is-on" : ""}`} onClick={() => m.mutate(1)}><IconThumbUp /></button>
+      <button type="button" aria-label="No me interesa" aria-pressed={t.feedback < 0} title="No me interesa"
+        className={`btn-icon ${t.feedback < 0 ? "is-on" : ""}`} onClick={() => m.mutate(-1)}><IconThumbDown /></button>
+    </>
   );
 }
 
-export function FavButton({ t }: { t: Tender }) {
+export function FavButton({ t, label }: { t: Tender; label?: boolean }) {
   const qc = useQueryClient();
   const m = useMutation({
     mutationFn: () => t.favorite ? api(`/favorites/${t.ocid}`, { method: "DELETE" }) : api(`/favorites/${t.ocid}`, { method: "PUT", body: { status: "por_cotizar" } }),
     onSuccess: () => qc.invalidateQueries(),
   });
-  return <button title="Favorito" className={`btn ${t.favorite ? "btn-primary" : ""}`} onClick={() => m.mutate()}>{t.favorite ? "★" : "☆"}</button>;
+  const on = !!t.favorite;
+  if (label) {
+    return (
+      <button type="button" aria-pressed={on} className={`btn ${on ? "btn-primary" : ""}`} onClick={() => m.mutate()}>
+        <IconBookmark filled={on} size={15} />{on ? "En seguimiento" : "Seguir concurso"}
+      </button>
+    );
+  }
+  return (
+    <button type="button" aria-label={on ? "Dejar de seguir" : "Seguir concurso"} aria-pressed={on} title={on ? "En seguimiento" : "Seguir concurso"}
+      className={`btn-icon ${on ? "is-on" : ""}`} onClick={() => m.mutate()}><IconBookmark filled={on} /></button>
+  );
 }
 
 export function StatusBadge({ t }: { t: Tender }) {
-  const d = daysLeft(t.deadline_at);
-  const cls = t.is_open ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" : "";
-  return <span className={`badge ${cls}`}>{t.is_open ? `Vigente${d != null && d >= 0 ? ` · ${d} d` : ""}` : t.status_details}</span>;
+  if (t.is_open) {
+    const d = daysLeft(t.deadline_at);
+    return <span className="pill-open">{d != null && d >= 0 && d <= 3 ? closeLabel(t.deadline_at) : "Vigente"}</span>;
+  }
+  return <span className="badge">{t.status_details}</span>;
 }
 
-export default function TenderCard({ t, context, extra }: { t: Tender; context: string; extra?: React.ReactNode }) {
+/** Fila de concurso. Úsala dentro de un contenedor `.list`. */
+export default function TenderCard({ t, context, extra }: { t: Tender; context: string; extra?: ReactNode }) {
+  const meta = t.is_open
+    ? closeLabel(t.deadline_at)
+    : t.awarded_total != null
+      ? `Adjudicado ${money(t.awarded_total)}${t.winners[0] ? ` · ${supplierName(t.winners[0])}` : ""}`
+      : t.status_details;
   return (
-    <div className="card flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-      <div className="min-w-0 space-y-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <StatusBadge t={t} />
-          <span className="muted">NOG {t.nog}</span>
-          {t.score != null && <span className="badge">{Math.round(t.score * 100)}%</span>}
+    <article className="flex flex-wrap items-start gap-x-4 gap-y-3 px-5 py-4 transition-colors hover:bg-stone-50/60">
+      {t.score != null && (
+        <div className="flex w-11 shrink-0 flex-col items-center pt-0.5">
+          <span className="text-[15px] font-semibold tabular-nums text-brand-800">{Math.round(t.score * 100)}%</span>
+          <span className="text-[10px] text-stone-600">afinidad</span>
         </div>
-        <Link to={`/tenders/${t.nog}`} className="block font-medium hover:underline">{t.title}</Link>
-        <div className="muted">{t.buyer_name}{t.unit_name ? ` · ${t.unit_name}` : ""}</div>
-        <div className="muted">
-          {t.is_open ? `Cierra ${dateTime(t.deadline_at)}` : t.awarded_total != null ? `Adjudicado ${money(t.awarded_total)}${t.winners[0] ? ` a ${t.winners[0]}` : ""}` : ""}
+      )}
+      <div className="flex min-w-0 flex-[1_1_320px] flex-col gap-1">
+        <Link to={`/tenders/${t.nog}`} className="text-sm font-medium leading-snug text-zinc-900 hover:text-brand-800">
+          {sentenceCase(t.title)}
+        </Link>
+        <div className="text-[13px] text-stone-600">
+          {nameCase(t.buyer_name)}{t.unit_name ? ` · ${nameCase(t.unit_name)}` : ""} · NOG {t.nog}
         </div>
-        {t.reason && <div className="text-xs text-brand-600 dark:text-brand-100">{t.reason}</div>}
+        {t.reason && <div className="text-xs text-stone-600">{t.reason.replace(/«([^»]+)»/g, (_, q) => `«${sentenceCase(q)}»`)}</div>}
         {extra}
       </div>
-      <div className="flex shrink-0 items-center gap-1">
-        <Feedback t={t} context={context} />
-        <FavButton t={t} />
+      <div className="flex shrink-0 flex-col items-end gap-2">
+        <div className="flex items-center gap-1.5">
+          <StatusBadge t={t} />
+          <Feedback t={t} context={context} />
+          <FavButton t={t} />
+        </div>
+        {meta && <span className="text-xs text-stone-600">{meta}</span>}
       </div>
-    </div>
+    </article>
   );
 }

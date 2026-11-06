@@ -1,101 +1,194 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useParams } from "react-router-dom";
+import { ReactNode } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { api, Tender } from "../api";
+import { IconArrowLeft, IconExternal } from "../components/icons";
 import TenderCard, { FAV_LABELS, FavButton, Feedback, StatusBadge } from "../components/TenderCard";
-import { ErrorBox, Loading, Page } from "../components/ui";
-import { date, dateTime, money, money2 } from "../format";
+import { ErrorBox, Loading, Segmented } from "../components/ui";
+import { closeLabel, date, money, money2, nameCase, num, sentenceCase, stripHtml, supplierName } from "../format";
 
 export default function TenderDetail() {
   const { nog } = useParams();
+  const nav = useNavigate();
   const qc = useQueryClient();
   const t = useQuery({ queryKey: ["tender", nog], queryFn: () => api(`/tenders/${nog}`) });
   const comp = useQuery({ queryKey: ["comp", nog], queryFn: () => api(`/tenders/${nog}/price-comparables`) });
   const sim = useQuery({ queryKey: ["similar", nog], queryFn: () => api<{ items: Tender[] }>(`/tenders/${nog}/similar?status=awarded`) });
-  if (t.isLoading) return <Loading />;
-  if (t.error) return <ErrorBox error={t.error} />;
+
+  const back = (
+    <button type="button" onClick={() => (window.history.length > 1 ? nav(-1) : nav("/search"))} className="inline-flex items-center gap-1.5 self-start text-[13px] text-stone-600 hover:text-zinc-900">
+      <IconArrowLeft size={14} />Volver
+    </button>
+  );
+  if (t.isLoading) return <div className="flex flex-col gap-6">{back}<Loading rows={3} /></div>;
+  if (t.error) return <div className="flex flex-col gap-6">{back}<ErrorBox error={t.error} /></div>;
   const d = t.data;
+  const firstStats = comp.data?.items?.find((c: any) => c.stats)?.stats;
+
   return (
-    <Page title={`NOG ${d.nog}`} actions={<div className="flex gap-1"><Feedback t={d} context="detail" /><FavButton t={d} />
-      <a className="btn" href={d.portal_url} target="_blank" rel="noreferrer">Guatecompras ↗</a></div>}>
-      <div className="card space-y-2">
-        <StatusBadge t={d} />
-        <h2 className="text-lg font-medium">{d.title}</h2>
-        <dl className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
-          <Row k="Entidad" v={d.buyer_name} /><Row k="Unidad" v={d.unit_name || "—"} />
-          <Row k="Modalidad" v={d.method || "—"} /><Row k="Publicado" v={date(d.published_at)} />
-          <Row k="Cierre de ofertas" v={dateTime(d.deadline_at)} /><Row k="Oferentes" v={d.n_tenderers ?? "—"} />
-        </dl>
-        {d.favorite && <FavNote t={d} onSaved={() => qc.invalidateQueries({ queryKey: ["tender", nog] })} />}
-      </div>
+    <div className="flex flex-col gap-6">
+      {back}
 
-      <Block title="Renglones">
-        <table className="w-full text-sm"><thead><tr><th>Descripción</th><th>UNSPSC</th><th>Cantidad</th></tr></thead>
-          <tbody>{d.items.map((i: any) => <tr key={i.id} className="border-t border-slate-100 dark:border-slate-800">
-            <td>{i.description}</td><td>{i.unspsc}</td><td>{i.quantity ?? "—"} {i.unit ?? ""}</td></tr>)}</tbody></table>
-      </Block>
+      <header className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-center gap-2.5 text-[13px] text-stone-600">
+          <StatusBadge t={d} /><span>NOG {d.nog}</span>
+          {d.method && <><span aria-hidden="true">·</span><span>{d.method}</span></>}
+        </div>
+        <div className="flex flex-wrap items-start justify-between gap-5">
+          <h1 className="min-w-0 flex-[1_1_520px] text-2xl font-semibold leading-snug tracking-tight">{sentenceCase(d.title)}</h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <Feedback t={d} context="detail" />
+            <FavButton t={d} label />
+            <a className="btn" href={d.portal_url} target="_blank" rel="noreferrer">Guatecompras <IconExternal size={14} /></a>
+          </div>
+        </div>
+      </header>
 
-      <Block title="Comparación con adjudicaciones pasadas">
-        {comp.isLoading ? <Loading /> : comp.error ? <ErrorBox error={comp.error} /> : (
-          <div className="space-y-5">
-            {comp.data.items.map((c: any) => <ItemComparables key={c.item.id} c={c} />)}
-            {comp.data.similar_tenders && (
-              <div>
-                <h3 className="mb-1 font-medium">Concursos adjudicados parecidos (monto total)</h3>
-                {comp.data.similar_tenders.stats && <p className="muted mb-1">Mediana {money(comp.data.similar_tenders.stats.median)} · rango intercuartil {money(comp.data.similar_tenders.stats.p25)} – {money(comp.data.similar_tenders.stats.p75)}</p>}
-                <table className="w-full text-sm"><tbody>{comp.data.similar_tenders.tenders.map((s: any) => (
-                  <tr key={s.nog} className="border-t border-slate-100 dark:border-slate-800">
-                    <td><Link className="hover:underline" to={`/tenders/${s.nog}`}>{s.title}</Link><div className="muted">{s.buyer_name}</div></td>
-                    <td className="text-right tabular-nums">{money(s.awarded_total)}</td><td className="muted">{Math.round(s.similarity * 100)}%</td></tr>))}</tbody></table>
+      <section aria-label="Datos clave" className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-stone-200 bg-stone-100 lg:grid-cols-4 [&>*]:bg-white">
+        <Fact k="Entidad" v={nameCase(d.buyer_name)} sub={d.unit_name ? nameCase(d.unit_name) : undefined} />
+        <Fact k="Publicado" v={date(d.published_at)} sub={d.n_tenderers != null ? `${d.n_tenderers} oferente(s)` : undefined} />
+        <Fact k="Cierre de ofertas" v={d.deadline_at ? date(d.deadline_at) : <span className="text-stone-600">No publicado</span>} sub={d.deadline_at && d.is_open ? closeLabel(d.deadline_at) : undefined} />
+        <Fact k="Precio de referencia (mediana)" v={firstStats ? <span className="text-lg text-brand-800">{money(firstStats.median)}</span> : <span className="text-stone-600">Sin datos</span>}
+          sub={firstStats ? `${firstStats.n} adjudicaciones comparables` : undefined} />
+      </section>
+
+      {d.favorite ? (
+        <FavNote t={d} onSaved={() => qc.invalidateQueries({ queryKey: ["tender", nog] })} />
+      ) : (
+        <p className="text-[13px] text-stone-600">Sigue este concurso para registrar si lo cotizaste, ganaste o perdiste, y agregar notas.</p>
+      )}
+
+      <Block title="¿A qué precio se ha adjudicado esto antes?" aside="precio unitario de adjudicaciones parecidas">
+        {comp.isLoading ? <Loading rows={2} /> : comp.error ? <ErrorBox error={comp.error} /> : (
+          <div className="flex flex-col gap-8">
+            {comp.data.items.map((c: any) => <ItemComparables key={c.item.id} c={c} multi={comp.data.items.length > 1} />)}
+            {comp.data.similar_tenders?.tenders?.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <h3 className="text-sm font-semibold">Concursos adjudicados parecidos · monto total</h3>
+                {comp.data.similar_tenders.stats && (
+                  <p className="text-[13px] text-stone-700">Mediana <b>{money(comp.data.similar_tenders.stats.median)}</b> · la mitad quedó entre {money(comp.data.similar_tenders.stats.p25)} y {money(comp.data.similar_tenders.stats.p75)}</p>
+                )}
+                <div className="overflow-x-auto">
+                  <table className="min-w-[560px]">
+                    <thead><tr><th>Concurso</th><th className="text-right">Monto</th><th className="text-right">Similitud</th></tr></thead>
+                    <tbody>{comp.data.similar_tenders.tenders.map((s: any) => (
+                      <tr key={s.nog}>
+                        <td><Link className="font-medium text-zinc-900 hover:text-brand-800" to={`/tenders/${s.nog}`}>{sentenceCase(s.title)}</Link><div className="mt-0.5 text-xs text-stone-600">{nameCase(s.buyer_name)}</div></td>
+                        <td className="text-right font-medium tabular-nums">{money(s.awarded_total)}</td>
+                        <td className="text-right text-stone-600 tabular-nums">{Math.round(s.similarity * 100)}%</td>
+                      </tr>))}</tbody>
+                  </table>
+                </div>
               </div>
             )}
           </div>
         )}
       </Block>
 
+      <Block title="Renglones">
+        <div className="overflow-x-auto">
+          <table className="min-w-[520px]">
+            <thead><tr><th>Descripción</th><th>UNSPSC</th><th className="text-right">Cantidad</th></tr></thead>
+            <tbody>{d.items.map((i: any) => (
+              <tr key={i.id}><td>{sentenceCase(i.description)}</td><td className="text-stone-600 tabular-nums">{i.unspsc}</td>
+                <td className="text-right tabular-nums">{i.quantity != null ? num(i.quantity) : "—"} {i.unit ? i.unit.toLowerCase() : ""}</td></tr>))}</tbody>
+          </table>
+        </div>
+      </Block>
+
       {(d.bids.length > 0 || d.awards.length > 0) && (
         <Block title="Oferentes y adjudicación">
-          <table className="w-full text-sm"><thead><tr><th>Proveedor</th><th>Oferta</th><th>Resultado</th></tr></thead><tbody>
-            {d.bids.map((b: any, i: number) => <tr key={i} className="border-t border-slate-100 dark:border-slate-800">
-              <td>{b.supplier_id ? <Link className="hover:underline" to={`/suppliers/${b.supplier_id}`}>{b.supplier_name}</Link> : b.supplier_name}</td>
-              <td className="tabular-nums">{money2(b.amount)}</td><td>{b.status ?? ""}</td></tr>)}
-            {d.awards.map((a: any, i: number) => <tr key={`a${i}`} className="border-t border-slate-100 dark:border-slate-800">
-              <td>{a.supplier_id ? <Link className="hover:underline" to={`/suppliers/${a.supplier_id}`}>{a.supplier_name}</Link> : a.supplier_name}</td>
-              <td className="tabular-nums">{money2(a.amount)}</td><td><span className="badge">Adjudicado</span></td></tr>)}
-          </tbody></table>
+          <div className="overflow-x-auto">
+            <table className="min-w-[520px]">
+              <thead><tr><th>Proveedor</th><th className="text-right">Monto</th><th>Resultado</th></tr></thead>
+              <tbody>
+                {d.awards.map((a: any, i: number) => (
+                  <tr key={`a${i}`}><td><Supplier id={a.supplier_id} name={a.supplier_name} /></td><td className="text-right font-medium tabular-nums">{money2(a.amount)}</td><td><span className="pill-open">Adjudicado</span></td></tr>))}
+                {d.bids.map((b: any, i: number) => (
+                  <tr key={i}><td><Supplier id={b.supplier_id} name={b.supplier_name} /></td><td className="text-right tabular-nums">{money2(b.amount)}</td><td className="text-stone-600">{b.status ?? ""}</td></tr>))}
+              </tbody>
+            </table>
+          </div>
         </Block>
       )}
+
       {d.documents.length > 0 && (
-        <Block title="Documentos"><ul className="list-disc pl-5 text-sm">{d.documents.map((x: any, i: number) =>
-          <li key={i}><a className="text-brand-600 hover:underline" href={x.url} target="_blank" rel="noreferrer">{x.title || x.doc_type}</a></li>)}</ul></Block>
+        <Block title="Documentos">
+          <ul className="flex flex-col gap-1.5 text-[13px]">{d.documents.map((x: any, i: number) => (
+            <li key={i}><a className="inline-flex items-center gap-1.5" href={x.url} target="_blank" rel="noreferrer">{stripHtml(x.title || x.doc_type)}<IconExternal size={13} /></a></li>))}</ul>
+        </Block>
       )}
-      <Block title="Adjudicados similares">
-        {sim.data?.items.length ? <div className="space-y-2">{sim.data.items.slice(0, 5).map((x) => <TenderCard key={x.ocid} t={x} context="similar" />)}</div> : <p className="muted">Sin resultados.</p>}
-      </Block>
-    </Page>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="h-section">Adjudicados similares</h2>
+        {sim.isLoading ? <Loading rows={3} /> : sim.data?.items.length
+          ? <div className="list">{sim.data.items.slice(0, 5).map((x) => <TenderCard key={x.ocid} t={x} context="similar" />)}</div>
+          : <p className="muted">Sin resultados.</p>}
+      </section>
+    </div>
   );
 }
 
-function ItemComparables({ c }: { c: any }) {
+/** Barra de rango: mín — P25 ▮ mediana ▮ P75 — máx. */
+function PriceRange({ s }: { s: any }) {
+  const span = Math.max(1, s.max - s.min);
+  const pos = (v: number) => Math.min(100, Math.max(0, ((v - s.min) / span) * 100));
+  const marks: [number, string, string][] = [[s.p25, "P25", ""], [s.median, "mediana", "font-semibold text-brand-800"], [s.p75, "P75", ""]];
+  return (
+    <div role="img" className="flex flex-col gap-2.5 py-1"
+      aria-label={`Mínimo ${money(s.min)}, percentil 25 ${money(s.p25)}, mediana ${money(s.median)}, percentil 75 ${money(s.p75)}, máximo ${money(s.max)}`}>
+      <div className="relative h-7">
+        <div className="absolute inset-x-0 top-[13px] h-0.5 rounded bg-stone-200" />
+        <div className="absolute top-1.5 h-4 rounded bg-brand-100" style={{ left: `${pos(s.p25)}%`, width: `${pos(s.p75) - pos(s.p25)}%` }} />
+        <div className="absolute top-0 h-7 w-[3px] -translate-x-1/2 rounded bg-brand-600" style={{ left: `${pos(s.median)}%` }} />
+      </div>
+      <div className="relative h-9 text-xs text-stone-600">
+        <span className="absolute left-0">{money(s.min)}<br />mín.</span>
+        {marks.map(([v, l, cls]) => (
+          <span key={l} className={`absolute hidden -translate-x-1/2 text-center sm:block ${cls}`} style={{ left: `${pos(v)}%` }}>{money(v)}<br />{l}</span>
+        ))}
+        <span className="absolute right-0 text-right">{money(s.max)}<br />máx.</span>
+      </div>
+    </div>
+  );
+}
+
+function ItemComparables({ c, multi }: { c: any; multi: boolean }) {
   const s = c.stats;
   return (
-    <div>
-      <h3 className="font-medium">{c.item.description} <span className="muted">· {c.item.quantity ?? ""} {c.item.unit ?? ""}</span></h3>
-      {!s ? <p className="muted">No hay precios comparables suficientes (solo se derivan precios unitarios de adjudicaciones de un renglón).</p> : (
+    <div className="flex flex-col gap-4">
+      {multi && <h3 className="text-sm font-semibold">{sentenceCase(c.item.description)} <span className="font-normal text-stone-600">· {c.item.quantity ?? ""} {c.item.unit?.toLowerCase() ?? ""}</span></h3>}
+      {!s ? <p className="muted">Todavía no hay precios comparables para este renglón (solo se derivan de adjudicaciones de un renglón).</p> : (
         <>
-          <p className="muted">{s.n} observaciones · mediana {money2(s.median)} · P25–P75 {money2(s.p25)} – {money2(s.p75)} · mín {money2(s.min)} · máx {money2(s.max)}</p>
+          <PriceRange s={s} />
+          <p className="text-[13px] leading-relaxed text-stone-700">
+            En <b>{s.n}</b> adjudicaciones parecidas, la mitad quedó entre <b>{money(s.p25)} y {money(s.p75)}</b>; la mediana fue <b>{money2(s.median)}</b>.
+          </p>
           {c.trend.length > 1 && (
-            <div className="h-36"><ResponsiveContainer><LineChart data={c.trend}>
-              <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} /><XAxis dataKey="period" fontSize={11} /><YAxis fontSize={11} width={50} /><Tooltip formatter={(v: number) => money2(v)} />
-              <Line type="monotone" dataKey="median" name="Mediana" stroke="#2563eb" strokeWidth={2} dot /></LineChart></ResponsiveContainer></div>
+            <div className="h-32">
+              <ResponsiveContainer><LineChart data={c.trend} margin={{ left: 0, right: 8, top: 8, bottom: 0 }}>
+                <CartesianGrid vertical={false} stroke="#f5f5f4" />
+                <XAxis dataKey="period" fontSize={11} tickLine={false} axisLine={false} stroke="#57534e" />
+                <YAxis fontSize={11} width={56} tickLine={false} axisLine={false} stroke="#57534e" tickFormatter={(v) => `Q${Math.round(v / 1000)}k`} />
+                <Tooltip formatter={(v: number) => money2(v)} contentStyle={{ borderRadius: 8, border: "1px solid #e7e5e4", fontSize: 12 }} />
+                <Line type="monotone" dataKey="median" name="Mediana" stroke="#4f46e5" strokeWidth={2} dot={{ r: 3 }} />
+              </LineChart></ResponsiveContainer>
+            </div>
           )}
-          <table className="mt-1 w-full text-sm"><thead><tr><th>Concurso</th><th>Proveedor</th><th className="text-right">Precio unit.</th><th>Fecha</th><th></th></tr></thead><tbody>
-            {c.comparables.slice(0, 8).map((x: any) => (
-              <tr key={x.nog + x.awarded_at} className="border-t border-slate-100 dark:border-slate-800">
-                <td><Link className="hover:underline" to={`/tenders/${x.nog}`}>{x.title}</Link><div className="muted">{x.buyer_name}</div></td>
-                <td>{x.supplier}</td><td className="text-right tabular-nums">{money2(x.unit_price)}</td><td>{date(x.awarded_at)}</td>
-                <td className="muted">{Math.round(x.similarity * 100)}%</td></tr>))}
-          </tbody></table>
+          <div className="overflow-x-auto">
+            <table className="min-w-[640px]">
+              <thead><tr><th>Concurso</th><th>Proveedor</th><th className="text-right">Precio unit.</th><th className="text-right">Fecha</th></tr></thead>
+              <tbody>{c.comparables.slice(0, 8).map((x: any) => (
+                <tr key={x.nog + x.awarded_at}>
+                  <td><Link className="font-medium text-zinc-900 hover:text-brand-800" to={`/tenders/${x.nog}`}>{sentenceCase(x.title)}</Link>
+                    <div className="mt-0.5 text-xs text-stone-600">{nameCase(x.buyer_name)} · {Math.round(x.similarity * 100)}% similar</div></td>
+                  <td className="text-stone-700">{supplierName(x.supplier)}</td>
+                  <td className="text-right font-medium tabular-nums">{money2(x.unit_price)}</td>
+                  <td className="whitespace-nowrap text-right text-stone-600">{date(x.awarded_at)}</td>
+                </tr>))}</tbody>
+            </table>
+          </div>
         </>
       )}
     </div>
@@ -105,13 +198,37 @@ function ItemComparables({ c }: { c: any }) {
 function FavNote({ t, onSaved }: { t: Tender; onSaved: () => void }) {
   const save = async (status: string, note: string) => { await api(`/favorites/${t.ocid}`, { method: "PUT", body: { status, note } }); onSaved(); };
   return (
-    <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2 dark:border-slate-800">
-      <select className="input w-auto" value={t.favorite!} onChange={(e) => save(e.target.value, t.note ?? "")}>
-        {Object.entries(FAV_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-      </select>
-      <input className="input flex-1" placeholder="Nota" defaultValue={t.note ?? ""} onBlur={(e) => e.target.value !== (t.note ?? "") && save(t.favorite!, e.target.value)} />
-    </div>
+    <section aria-label="Mi estado" className="flex flex-wrap items-center gap-4 rounded-2xl border border-stone-200 bg-white px-5 py-3.5">
+      <span className="text-[13px] text-stone-600">Mi estado</span>
+      <div className="overflow-x-auto">
+        <Segmented label="Estado de seguimiento" value={t.favorite!} options={Object.entries(FAV_LABELS) as [string, string][]} onChange={(v) => save(v, t.note ?? "")} />
+      </div>
+      <label className="flex flex-[1_1_240px]">
+        <span className="sr-only">Nota</span>
+        <input className="input bg-stone-50" placeholder="Agregar una nota…" defaultValue={t.note ?? ""}
+          onBlur={(e) => e.target.value !== (t.note ?? "") && save(t.favorite!, e.target.value)} />
+      </label>
+    </section>
   );
 }
-const Row = ({ k, v }: { k: string; v: React.ReactNode }) => <div className="flex gap-2"><dt className="muted w-32 shrink-0">{k}</dt><dd>{v}</dd></div>;
-const Block = ({ title, children }: { title: string; children: React.ReactNode }) => <section className="card space-y-2"><h2 className="font-medium">{title}</h2>{children}</section>;
+
+const Supplier = ({ id, name }: { id?: string; name: string }) =>
+  id ? <Link className="font-medium text-zinc-900 hover:text-brand-800" to={`/suppliers/${id}`}>{supplierName(name)}</Link> : <>{supplierName(name)}</>;
+
+const Fact = ({ k, v, sub }: { k: string; v: ReactNode; sub?: string }) => (
+  <div className="flex min-w-0 flex-col gap-1 px-5 py-4">
+    <span className="text-xs text-stone-600">{k}</span>
+    <span className="text-sm font-medium">{v}</span>
+    {sub && <span className="truncate text-xs text-stone-600">{sub}</span>}
+  </div>
+);
+
+const Block = ({ title, aside, children }: { title: string; aside?: string; children: ReactNode }) => (
+  <section className="card flex flex-col gap-5 p-6">
+    <div className="flex flex-wrap items-baseline justify-between gap-2">
+      <h2 className="h-section">{title}</h2>
+      {aside && <span className="text-xs text-stone-600">{aside}</span>}
+    </div>
+    {children}
+  </section>
+);

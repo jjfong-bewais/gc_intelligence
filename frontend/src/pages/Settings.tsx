@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../api";
 import { Page } from "../components/ui";
-import { dateTime } from "../format";
+import { dateTime, num } from "../format";
 
 export default function Settings({ user }: { user: any }) {
   const qc = useQueryClient();
@@ -14,21 +14,29 @@ export default function Settings({ user }: { user: any }) {
   });
   const status = useQuery({ queryKey: ["admin"], queryFn: () => api("/admin/status"), enabled: user.role === "admin" });
   return (
-    <Page title="Ajustes">
-      <section className="card space-y-2">
-        <h2 className="font-medium">{user.org_name}</h2>
-        <p className="muted">NIT de tu empresa (uno por línea). Con ellos se construye tu perfil de recomendaciones y oportunidades.</p>
-        <textarea className="input h-24 font-mono" value={nits} onChange={(e) => { setNits(e.target.value); setOk(false); }} placeholder="9000001" />
-        <button className="btn btn-primary" onClick={() => save.mutate()}>Guardar</button> {ok && <span className="muted">Guardado ✓</span>}
+    <Page title="Ajustes" subtitle={user.org_name}>
+      <section className="card flex flex-col gap-4 p-6">
+        <div>
+          <h2 className="h-section">NIT de tu empresa</h2>
+          <p className="mt-1 text-[13px] text-stone-600">Uno por línea. Con ellos construimos tu perfil de recomendaciones y oportunidades.</p>
+        </div>
+        <textarea className="input h-28 max-w-sm py-2 font-mono" aria-label="NIT de tu empresa" value={nits} onChange={(e) => { setNits(e.target.value); setOk(false); }} placeholder="9000001" />
+        <div className="flex items-center gap-3">
+          <button className="btn btn-primary" onClick={() => save.mutate()} disabled={save.isPending}>Guardar</button>
+          {ok && <span className="text-[13px] text-green-700">Guardado</span>}
+        </div>
       </section>
       {status.data && (
-        <section className="card space-y-1 text-sm">
-          <h2 className="font-medium">Estado del sistema</h2>
-          <div>{status.data.tenders} concursos · {status.data.open} vigentes · {status.data.without_embedding} sin embedding</div>
-          <div className="muted">Embeddings: {status.data.embeddings} · Correo: {status.data.mail} · Modo: {status.data.mode}</div>
-          <table className="mt-2 w-full"><thead><tr><th>Archivo</th><th>Registros</th><th>Cambios</th><th>Última corrida</th></tr></thead><tbody>
-            {status.data.files.map((f: any) => <tr key={f.key} className="border-t border-slate-100 dark:border-slate-800"><td>{f.key}</td><td>{f.n_records}</td><td>{f.n_changed}</td><td>{dateTime(f.processed_at)}</td></tr>)}
-          </tbody></table>
+        <section className="card flex flex-col gap-4 p-6">
+          <div>
+            <h2 className="h-section">Estado del sistema</h2>
+            <p className="mt-1 text-[13px] text-stone-600">{num(status.data.tenders)} concursos · {num(status.data.open)} vigentes · {num(status.data.without_embedding)} sin embedding · Embeddings: {status.data.embeddings} · Correo: {status.data.mail} · Modo: {status.data.mode}</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-[520px]"><thead><tr><th>Archivo</th><th className="text-right">Registros</th><th className="text-right">Cambios</th><th className="text-right">Última corrida</th></tr></thead><tbody>
+              {status.data.files.map((f: any) => <tr key={f.key}><td>{f.key}</td><td className="text-right tabular-nums">{num(f.n_records)}</td><td className="text-right tabular-nums">{num(f.n_changed)}</td><td className="text-right text-stone-600">{dateTime(f.processed_at)}</td></tr>)}
+            </tbody></table>
+          </div>
         </section>
       )}
     </Page>
