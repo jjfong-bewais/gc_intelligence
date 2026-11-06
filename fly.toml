@@ -1,33 +1,35 @@
-# fly launch --no-deploy --copy-config   (cambia `app` por un nombre único)
-app = "gc-intelligence-api"
-primary_region = "iad"
+# fly.toml app configuration file generated for gc-intelligence-api on 2026-11-06T02:04:42-06:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'gc-intelligence-api'
+primary_region = 'iad'
 
 [build]
-  dockerfile = "backend/Dockerfile"
+  dockerfile = 'backend/Dockerfile'
 
 [env]
-  GC_MODE = "prod"
-  COOKIE_SECURE = "true"
-  EMBEDDINGS_PROVIDER = "openai"
-  MAIL_PROVIDER = "resend"
-  DATA_YEAR = "2026"
-  # CORS_ORIGINS, APP_URL, API_URL, COOKIE_DOMAIN: ver docs/DEPLOY.md
+  COOKIE_SECURE = 'true'
+  DATA_YEAR = '2026'
+  EMBEDDINGS_PROVIDER = 'openai'
+  GC_MODE = 'prod'
+  MAIL_PROVIDER = 'resend'
 
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = "stop"
+  auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 0
 
-  [http_service.checks]
-    [http_service.checks.health]
-      grace_period = "20s"
-      interval = "30s"
-      method = "GET"
-      path = "/api/v1/health"
-      timeout = "10s"
+  [[http_service.checks]]
+    interval = '30s'
+    timeout = '10s'
+    grace_period = '20s'
+    method = 'GET'
+    path = '/api/v1/health'
 
 [[vm]]
-  size = "shared-cpu-1x"
-  memory = "512mb"
+  size = 'shared-cpu-1x'
+  memory = '512mb'
