@@ -24,6 +24,15 @@ jobs:
       DATA_YEAR: "2026"
     steps:
       - uses: actions/checkout@v4
+      - name: Verificar secretos
+        run: |
+          ok=1
+          for v in DATABASE_URL OPENAI_API_KEY RESEND_API_KEY SECRET_KEY APP_URL API_URL MAIL_FROM; do
+            if [ -z "${!v}" ]; then echo "::error::$v llega VACÍO al workflow (revisa Settings → Secrets and variables → Actions)"; ok=0; fi
+          done
+          case "$DATABASE_URL" in postgresql://*|postgres://*) ;; *) echo "::error::DATABASE_URL no empieza con postgresql://"; ok=0;; esac
+          [ "$ok" = 1 ] || exit 1
+          echo "Secretos presentes"
       - uses: actions/setup-python@v5
         with: { python-version: "3.12", cache: pip, cache-dependency-path: backend/requirements.txt }
       - run: pip install -r backend/requirements.txt
