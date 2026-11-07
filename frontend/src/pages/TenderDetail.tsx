@@ -130,26 +130,48 @@ export default function TenderDetail() {
   );
 }
 
-/** Barra de rango: mín — P25 ▮ mediana ▮ P75 — máx. */
+/** Barra de rango tipo diagrama de caja. Las etiquetas van en columnas fijas para que nunca se encimen. */
 function PriceRange({ s }: { s: any }) {
-  const span = Math.max(1, s.max - s.min);
-  const pos = (v: number) => Math.min(100, Math.max(0, ((v - s.min) / span) * 100));
-  const marks: [number, string, string][] = [[s.p25, "P25", ""], [s.median, "mediana", "font-semibold text-brand-800"], [s.p75, "P75", ""]];
+  const iqr = Math.max(0, s.p75 - s.p25);
+  // Escala recortada a los "bigotes" (1.5×IQR) para que valores extremos no aplasten la caja.
+  const lo = Math.max(s.min, s.p25 - 1.5 * iqr);
+  const hi = Math.min(s.max, s.p75 + 1.5 * iqr);
+  const span = Math.max(1e-9, hi - lo);
+  const pos = (v: number) => Math.min(100, Math.max(0, ((v - lo) / span) * 100));
+  const cutLo = s.min < lo, cutHi = s.max > hi;
+  const cols: [string, number, boolean][] = [["Mín.", s.min, false], ["P25", s.p25, false], ["Mediana", s.median, true], ["P75", s.p75, false], ["Máx.", s.max, false]];
   return (
-    <div role="img" className="flex flex-col gap-2.5 py-1"
-      aria-label={`Mínimo ${money(s.min)}, percentil 25 ${money(s.p25)}, mediana ${money(s.median)}, percentil 75 ${money(s.p75)}, máximo ${money(s.max)}`}>
-      <div className="relative h-7">
+    <div className="flex flex-col gap-3">
+      <div role="img" className="relative mx-1 h-7"
+        aria-label={`Mínimo ${money2(s.min)}, percentil 25 ${money2(s.p25)}, mediana ${money2(s.median)}, percentil 75 ${money2(s.p75)}, máximo ${money2(s.max)}`}>
         <div className="absolute inset-x-0 top-[13px] h-0.5 rounded bg-stone-200" />
-        <div className="absolute top-1.5 h-4 rounded bg-brand-100" style={{ left: `${pos(s.p25)}%`, width: `${pos(s.p75) - pos(s.p25)}%` }} />
+        <div className="absolute top-1.5 h-4 rounded bg-brand-100" style={{ left: `${pos(s.p25)}%`, width: `${Math.max(0.5, pos(s.p75) - pos(s.p25))}%` }} />
         <div className="absolute top-0 h-7 w-[3px] -translate-x-1/2 rounded bg-brand-600" style={{ left: `${pos(s.median)}%` }} />
+        {cutLo && <span className="absolute -left-1 top-[5px] text-xs leading-none text-stone-500" title={`El mínimo (${money2(s.min)}) queda fuera de escala`}>‹</span>}
+        {cutHi && <span className="absolute -right-1 top-[5px] text-xs leading-none text-stone-500" title={`El máximo (${money2(s.max)}) queda fuera de escala`}>›</span>}
       </div>
-      <div className="relative h-9 text-xs text-stone-600">
-        <span className="absolute left-0">{money(s.min)}<br />mín.</span>
-        {marks.map(([v, l, cls]) => (
-          <span key={l} className={`absolute hidden -translate-x-1/2 text-center sm:block ${cls}`} style={{ left: `${pos(v)}%` }}>{money(v)}<br />{l}</span>
+      <dl className="grid grid-cols-5 gap-1 text-center sm:gap-2">
+        {cols.map(([l, v, hl]) => (
+          <div key={l} className={`flex min-w-0 flex-col gap-0.5 rounded-lg px-1 py-1.5 ${hl ? "bg-brand-50" : ""}`}>
+            <dt className={`text-[11px] ${hl ? "font-medium text-brand-800" : "text-stone-600"}`}>{l}</dt>
+            <dd className={`whitespace-nowrap text-xs tabular-nums sm:text-[13px] ${hl ? "font-semibold text-brand-800" : "font-medium text-zinc-900"}`}>{money(v)}</dd>
+          </div>
         ))}
-        <span className="absolute right-0 text-right">{money(s.max)}<br />máx.</span>
-      </div>
+      </dl>
+    </div>
+  );
+}
+
+const compact = (v: number) => new Intl.NumberFormat("es-GT", { style: "currency", currency: "GTQ", notation: "compact", maximumFractionDigits: 1 }).format(v);
+
+function TrendTooltip({ active, payload }: any) {
+  if (!active || !payload?.length) return null;
+  const p = payload[0].payload;
+  return (
+    <div className="rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs shadow-md">
+      <div className="font-medium text-zinc-900">{p.period.replace("-T", " · T")}</div>
+      <div className="mt-1 flex items-center gap-1.5 text-stone-700"><span className="h-2 w-2 rounded-full bg-brand-600" />Mediana <b className="tabular-nums text-zinc-900">{money2(p.median)}</b></div>
+      {p.n != null && <div className="mt-0.5 text-stone-600">{p.n} adjudicacion{p.n === 1 ? "" : "es"}</div>}
     </div>
   );
 }
@@ -166,14 +188,17 @@ function ItemComparables({ c, multi }: { c: any; multi: boolean }) {
             En <b>{s.n}</b> adjudicaciones parecidas, la mitad quedó entre <b>{money(s.p25)} y {money(s.p75)}</b>; la mediana fue <b>{money2(s.median)}</b>.
           </p>
           {c.trend.length > 1 && (
-            <div className="h-32">
-              <ResponsiveContainer><LineChart data={c.trend} margin={{ left: 0, right: 8, top: 8, bottom: 0 }}>
-                <CartesianGrid vertical={false} stroke="#f5f5f4" />
-                <XAxis dataKey="period" fontSize={11} tickLine={false} axisLine={false} stroke="#57534e" />
-                <YAxis fontSize={11} width={56} tickLine={false} axisLine={false} stroke="#57534e" tickFormatter={(v) => `Q${Math.round(v / 1000)}k`} />
-                <Tooltip formatter={(v: number) => money2(v)} contentStyle={{ borderRadius: 8, border: "1px solid #e7e5e4", fontSize: 12 }} />
-                <Line type="monotone" dataKey="median" name="Mediana" stroke="#4f46e5" strokeWidth={2} dot={{ r: 3 }} />
-              </LineChart></ResponsiveContainer>
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs text-stone-600">Mediana por trimestre · pasa el cursor para ver el detalle</span>
+              <div className="h-40">
+                <ResponsiveContainer><LineChart data={c.trend} margin={{ left: 0, right: 12, top: 8, bottom: 0 }}>
+                  <CartesianGrid vertical={false} stroke="#f5f5f4" />
+                  <XAxis dataKey="period" fontSize={11} tickLine={false} axisLine={false} stroke="#57534e" tickFormatter={(v) => String(v).replace("-T", " T")} padding={{ left: 12, right: 12 }} />
+                  <YAxis fontSize={11} width={64} tickLine={false} axisLine={false} stroke="#57534e" tickFormatter={compact} domain={["auto", "auto"]} />
+                  <Tooltip content={<TrendTooltip />} cursor={{ stroke: "#a8a29e", strokeDasharray: "3 3" }} />
+                  <Line type="monotone" dataKey="median" name="Mediana" stroke="#4f46e5" strokeWidth={2} dot={{ r: 3, fill: "#fff", strokeWidth: 2 }} activeDot={{ r: 5, fill: "#4f46e5", stroke: "#fff", strokeWidth: 2 }} />
+                </LineChart></ResponsiveContainer>
+              </div>
             </div>
           )}
           <div className="overflow-x-auto">
