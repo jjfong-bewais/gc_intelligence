@@ -22,6 +22,7 @@ def main(argv: list[str] | None = None) -> int:
     i = sub.add_parser("ingest", help="descarga e importa archivos mensuales de Guatecompras")
     i.add_argument("--months-back", type=int, default=2, help="0 = todo el año")
     i.add_argument("--only", nargs="*", help="p. ej. 2026-09 2026-10")
+    i.add_argument("--from", dest="since", help="primer mes a cargar AAAA-MM (por defecto DATA_FROM=2024-01)")
     i.add_argument("--force", action="store_true")
     i.add_argument("--no-embed", action="store_true")
     e = sub.add_parser("embed", help="calcula embeddings pendientes")
@@ -54,7 +55,7 @@ def main(argv: list[str] | None = None) -> int:
         from .schema import init_db
         from .services.embeddings import embed_pending
         init_db()
-        sync(months_back=a.months_back, only=a.only, force=a.force)
+        sync(months_back=a.months_back, only=a.only, force=a.force, since=a.since)
         if not a.no_embed:
             with engine.begin() as c:
                 print(embed_pending(c))

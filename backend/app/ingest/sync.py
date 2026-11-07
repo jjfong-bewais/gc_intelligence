@@ -21,20 +21,34 @@ def select_files(files: list[dict], months_back: int, only: list[str] | None) ->
     return files[-months_back:] if months_back > 0 else files
 
 
+def _ym(s: str) -> tuple[int, int]:
+    y, m = s.strip().split("-")[:2]
+    return int(y), int(m)
+
+
 def sync(
     year: int | None = None, months_back: int = 2, only: list[str] | None = None,
-    force: bool = False, log=print,
+    force: bool = False, since: str | None = None, log=print,
 ) -> dict[str, LoadStats]:
-    """Descarga y procesa los últimos `months_back` meses (0 = todos) del año.
+    """Descarga y procesa los últimos `months_back` meses (0 = todos) desde `since`.
+
+    Sin `year`, recorre desde `since` (por defecto DATA_FROM, p. ej. 2024-01) hasta el año
+    actual; con `year`, solo ese año.
 
     Una adjudicación tardía reescribe el archivo del mes de la convocatoria, por eso
     por defecto se revisan los dos últimos archivos disponibles. Un archivo se omite si
     su `timestamp` no cambió desde la última corrida; y dentro de un archivo se omiten
     los registros cuya fecha de release no cambió.
     """
-    year = year or settings.data_year
     client = GuatecomprasClient()
-    files = select_files(client.list_files(year), months_back, only)
+    if year:
+        listed = client.list_files(year)
+    else:
+        start = _ym(since or settings.data_from)
+        listed = []
+        for y in range(start[0], utcnow().year + 1):
+            listed += [f for f in client.list_files(y) if (f["year"], f["month"]) >= start]
+    files = select_files(listed, months_back, only)
     with engine.connect() as conn:
         done = {r[0]: r[1] for r in conn.execute(sa.select(ingest_file.c.key, ingest_file.c.file_timestamp))}
     known = known_release_dates()

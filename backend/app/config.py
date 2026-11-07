@@ -50,6 +50,7 @@ class Settings(BaseSettings):
 
     # Datos
     data_year: int = 2026
+    data_from: str = "2024-01"  # primer mes a cargar (AAAA-MM)
     guatecompras_base: str = "https://ocds.guatecompras.gt"
 
     # Frontend compilado servido por la API (útil en la demo local)
