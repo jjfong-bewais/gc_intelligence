@@ -11,3 +11,4 @@ demo/*.db-*
 demo/outbox/
 .DS_Store
 _incoming.tgz
+.env.example
