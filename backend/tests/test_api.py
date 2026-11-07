@@ -70,20 +70,106 @@ def test_saved_search_alert_flow(client):
 
 def test_alert_emails_and_links(client):
     from app.config import settings
-    from app.db import engine
+    from app.db import engine, utcnow
     from app.services.alerts import run_saved_searches
     import re, sqlalchemy as sa
-    from app.models import saved_search
+    from app.models import alert_sent, saved_search, tender
     with engine.begin() as c:
-        c.execute(sa.update(saved_search).values(last_run_at=None))
+        c.execute(sa.delete(alert_sent))
+        c.execute(sa.update(saved_search).values(last_run_at=None, max_items=3))
         first = run_saved_searches(c, force=True)
+        sent1 = set(c.execute(sa.select(alert_sent.c.ocid)).scalars())
+        again = run_saved_searches(c)  # no forzado: aún no toca (frecuencia diaria)
         second = run_saved_searches(c, force=True)
-    assert first["mails"] >= 1 and second["mails"] == 0  # idempotente
+        rows = c.execute(sa.select(alert_sent.c.ocid)).scalars().all()
+        st = dict(c.execute(sa.select(tender.c.ocid, tender.c.status_details).where(tender.c.ocid.in_(rows))).all())
+        dl = dict(c.execute(sa.select(tender.c.ocid, tender.c.deadline_at).where(tender.c.ocid.in_(rows))).all())
+    assert first["mails"] >= 1 and 1 <= first["tenders"] <= 3 * first["mails"]
+    assert again["mails"] == 0
+    assert len(rows) == len(set(rows)), "un concurso no se repite en la misma semana"
+    assert sent1 <= set(rows) and second["tenders"] == len(rows) - len(sent1)
+    now = utcnow()
+    assert all(st[o] == "Vigente" and (dl[o] is None or dl[o] >= now) for o in rows)
     mail = sorted(Path(settings.outbox_dir).glob("*.html"))[-1].read_text()
     link = re.search(r'href="([^"]*links/feedback[^"]*)"', mail).group(1).replace("&amp;", "&")
     r = client.get(link.replace(settings.public_api_url, ""))
     assert r.status_code == 200 and "Gracias" in r.text
     assert "inválido" in client.get("/api/v1/links/feedback?t=bad").text
+
+
+def _search(client, filters, **kw):
+    r = client.post("/api/v1/tenders/search", json={"q": "", "filters": filters, "limit": 100, **kw})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def test_hard_filters_include_exclude(client):
+    facets = client.get("/api/v1/catalogs/facets").json()
+    for k in ("category", "status_details", "department", "entity_type", "method"):
+        assert facets[k], k
+    total = _search(client, {})["total"]
+    for key in ("category", "status_details", "entity_type", "method", "department"):
+        v = facets[key][0]["value"]
+        inc = _search(client, {key: {"op": "in", "values": [v]}})["total"]
+        exc = _search(client, {key: {"op": "out", "values": [v]}})["total"]
+        assert inc == facets[key][0]["count"] and inc + exc == total, key
+    goods = _search(client, {"category": {"op": "in", "values": ["goods"]}})["items"]
+    assert goods and all(i["category"] == "goods" for i in goods)
+    no_goods = _search(client, {"category": {"op": "out", "values": ["goods"]}})["items"]
+    assert all(i["category"] != "goods" for i in no_goods)
+    et = facets["entity_type"][0]["value"]
+    assert all(i["entity_type"] == et for i in _search(client, {"entity_type": {"op": "in", "values": [et]}})["items"])
+    # entidad compradora por texto
+    buyer = _search(client, {})["items"][0]["buyer_name"]
+    word = buyer.split()[-1]
+    inc = _search(client, {"buyer": {"op": "in", "values": [word]}})
+    assert inc["total"] and all(word.lower() in i["buyer_name"].lower() for i in inc["items"])
+    exc = _search(client, {"buyer": {"op": "out", "values": [word]}})
+    assert inc["total"] + exc["total"] == total
+    # proveedor adjudicado
+    aw = _search(client, {"awarded_only": True})["items"]
+    tender = client.get(f"/api/v1/tenders/{aw[0]['nog']}").json()
+    sid = tender["awards"][0]["supplier_id"]
+    inc = _search(client, {"supplier": {"op": "in", "values": [sid]}})
+    assert inc["total"] >= 1 and all(i["status"] == "complete" for i in inc["items"])
+    exc = _search(client, {"supplier": {"op": "out", "values": [sid]}})
+    assert inc["total"] + exc["total"] == total
+    # fechas y disponibilidad
+    assert _search(client, {"date_preset": "7d"})["total"] <= _search(client, {"date_preset": "1y"})["total"]
+    assert _search(client, {"date_from": "2100-01-01"})["total"] == 0
+    assert all(i["is_open"] for i in _search(client, {"open_only": True})["items"])
+    # formato anterior sigue funcionando
+    assert _search(client, {"status": "open"})["total"] == _search(client, {"status_details": {"op": "in", "values": ["Vigente"]}})["total"]
+
+
+def test_filters_in_views(client):
+    import json
+    from urllib.parse import quote
+    q = lambda f: quote(json.dumps(f))  # noqa: E731
+    base = client.get("/api/v1/dashboard").json()
+    none = client.get(f"/api/v1/dashboard?f={q({'date_from': '2100-01-01'})}").json()
+    assert base["kpis"]["open"] > 0 and none["kpis"]["open"] == 0 and none["filtered"] and not none["recommended"]
+    recs = client.get("/api/v1/recommendations").json()["items"]
+    cat = recs[0]["category"]
+    only = client.get(f"/api/v1/recommendations?f={q({'category': {'op': 'in', 'values': [cat]}})}").json()["items"]
+    out = client.get(f"/api/v1/recommendations?f={q({'category': {'op': 'out', 'values': [cat]}})}").json()["items"]
+    assert only and all(i["category"] == cat for i in only)
+    assert all(i["category"] != cat for i in out)
+    o = client.get(f"/api/v1/opportunities?f={q({'date_from': '2100-01-01'})}").json()
+    assert o["opportunities"] == []
+    assert client.get(f"/api/v1/opportunities?f={q({'category': {'op': 'out', 'values': ['works']}})}").status_code == 200
+
+
+def test_saved_combination_preview_and_limits(client):
+    body = {"name": "Bienes vigentes", "filters": {"category": {"op": "in", "values": ["goods"]}}, "max_items": 4}
+    s = client.post("/api/v1/saved-searches", json=body).json()
+    assert s["max_items"] == 4
+    p = client.get(f"/api/v1/saved-searches/{s['id']}/preview").json()
+    assert p["total"] > 0 and 1 <= len(p["items"]) <= 4
+    assert all(i["category"] == "goods" and i["is_open"] for i in p["items"])
+    assert client.post("/api/v1/saved-searches", json={**body, "max_items": 11}).status_code == 400
+    assert client.post("/api/v1/saved-searches", json={**body, "max_items": 0}).status_code == 400
+    client.delete(f"/api/v1/saved-searches/{s['id']}")
 
 
 def test_admin_status(client):

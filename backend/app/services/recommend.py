@@ -67,13 +67,18 @@ def build_profile(conn: sa.Connection, supplier_ids: list[str], user_id: int | N
 
 def recommend_open(
     conn: sa.Connection, profile: dict, k: int = 30, exclude: set[str] | None = None, per_vector: int = 40,
+    conds: list | None = None, base=None,
 ) -> list[dict]:
-    """Candidatos vigentes por vecindad con el perfil; el score es la mejor similitud ponderada."""
+    """Candidatos vigentes por vecindad con el perfil; el score es la mejor similitud ponderada.
+    `conds`: filtros duros adicionales; `base`: condición de vigencia (por defecto Vigente)."""
     exclude = (exclude or set()) | set(profile["negatives"])
     wmax = max((w for _, w, _, _ in profile["vectors"]), default=1.0) or 1.0
+    where = [open_cond() if base is None else base, *(conds or [])]
+    if exclude and len(exclude) <= 500:
+        where.append(tender.c.ocid.not_in(list(exclude)))
     best: dict[str, dict] = {}
     for vec, w, origin, (title, nog, _cls) in profile["vectors"]:
-        for ocid, sim in vector_search(conn, tender, tender.c.ocid, vec, per_vector, [open_cond()]):
+        for ocid, sim in vector_search(conn, tender, tender.c.ocid, vec, per_vector, where):
             if ocid in exclude:
                 continue
             score = sim * (0.7 + 0.3 * (w / wmax))
@@ -102,14 +107,43 @@ def recommend_open(
     return ranked
 
 
+def profile_scores(conn: sa.Connection, profile: dict, ocids: list[str]) -> dict[str, dict]:
+    """Afinidad de concursos dados con el perfil (misma escala que recommend_open, sin normalizar)."""
+    if not profile["vectors"] or not ocids:
+        return {}
+    cand = fetch_vectors(conn, tender, tender.c.ocid, ocids)
+    if not cand:
+        return {}
+    wmax = max((w for _, w, _, _ in profile["vectors"]), default=1.0) or 1.0
+    pv = np.stack([v for v, _, _, _ in profile["vectors"]])
+    factor = np.array([0.7 + 0.3 * (w / wmax) for _, w, _, _ in profile["vectors"]], dtype=np.float32)
+    ids = list(cand)
+    sims = np.stack([cand[o] for o in ids]) @ pv.T  # candidatos x perfil
+    weighted = sims * factor
+    best = weighted.argmax(axis=1)
+    neg = fetch_vectors(conn, tender, tender.c.ocid, profile["negatives"]) if profile["negatives"] else {}
+    negm = np.stack(list(neg.values())) if neg else None
+    out = {}
+    for i, o in enumerate(ids):
+        j = int(best[i])
+        score = float(weighted[i, j])
+        if negm is not None:
+            score -= 0.4 * max(0.0, float((negm @ cand[o]).max()) - 0.4)
+        _, _, origin, (title, nog, _cls) = profile["vectors"][j]
+        out[o] = {"score": score, "sim": float(sims[i, j]),
+                  "reason": f"Parecido a «{title[:70]}» (NOG {nog}) que {origin}"}
+    return out
+
+
 def inventory_matches(
     conn: sa.Connection, org_id: int, threshold: float, since=None, limit: int = 60, exclude: set[str] | None = None,
+    conds: list | None = None,
 ) -> list[dict]:
     """Concursos vigentes con ítems que coinciden con productos del inventario."""
     inv = conn.execute(select_inv(org_id)).mappings().all()
     if not inv:
         return []
-    conds = [open_cond()]
+    conds = [open_cond(), *(conds or [])]
     if since is not None:
         conds.append(tender.c.first_seen_at > since)
     if exclude:

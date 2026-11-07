@@ -1,14 +1,19 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "../api";
+import FilterPanel, { WithFilters } from "../components/FilterPanel";
 import { Empty, ErrorBox, Loading, Page } from "../components/ui";
+import { filterQuery, useViewFilters } from "../filters";
 import { money, nameCase, sentenceCase, supplierName } from "../format";
 
 export default function Opportunities() {
-  const q = useQuery({ queryKey: ["opps"], queryFn: () => api("/opportunities") });
+  const [filters, setFilters] = useViewFilters("opportunities");
+  const fq = filterQuery(filters);
+  const q = useQuery({ queryKey: ["opps", fq], queryFn: () => api(`/opportunities${fq ? `?${fq}` : ""}`), placeholderData: (p) => p });
   const d = q.data;
   return (
-    <Page title="Oportunidades" subtitle="Categorías donde participan proveedores parecidos a ti (por mezcla de clases UNSPSC) y donde tú aún no participas.">
+    <Page title="Oportunidades" subtitle="Categorías donde participan proveedores parecidos a ti (por mezcla de clases UNSPSC) y donde tú aún no participas. Los filtros limitan qué concursos cuentan.">
+      <WithFilters f={filters} panel={<FilterPanel value={filters} onChange={setFilters} />}>
       {q.isLoading ? <Loading rows={4} /> : q.error ? <ErrorBox error={q.error} /> : !d.peers.length ? (
         <Empty action={<Link to="/settings" className="btn mt-2">Configurar NIT</Link>}>Agrega tus NIT en Ajustes para encontrar proveedores semejantes y las clases donde participan.</Empty>
       ) : (
@@ -31,12 +36,14 @@ export default function Opportunities() {
                   <div><dt className="text-xs text-stone-600">Adjudicado a ellos</dt><dd className="font-medium tabular-nums">{money(o.peer_awarded_amount)}</dd></div>
                 </dl>
                 <p className="text-xs text-stone-600">Ej.: {o.top_peers.map((n: string) => nameCase(supplierName(n))).join(", ")}</p>
-                <Link className="btn self-start" to="/search" state={{ unspsc: o.unspsc_class }}>Ver {o.open_now} vigente(s) →</Link>
+                <Link className="btn self-start" to="/search" state={{ unspsc: o.unspsc_class, filters: { ...filters, status_details: { op: "in", values: ["Vigente"] } } }}>Ver {o.open_now} vigente(s) →</Link>
               </article>
             ))}
           </div>
+          {!d.opportunities.length && <Empty>Ninguna categoría nueva cumple estos filtros.</Empty>}
         </>
       )}
+      </WithFilters>
     </Page>
   );
 }

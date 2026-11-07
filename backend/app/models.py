@@ -71,7 +71,8 @@ saved_search = sa.Table(
     sa.Column("mode", sa.String(12), nullable=False, default="hybrid"),
     sa.Column("filters", sa.JSON, nullable=False, default=dict),
     sa.Column("frequency", sa.String(12), nullable=False, default="daily"),  # immediate|daily|weekly
-    sa.Column("active", sa.Boolean, nullable=False, default=True),
+    sa.Column("active", sa.Boolean, nullable=False, default=True),  # envía correos
+    sa.Column("max_items", sa.Integer, nullable=False, default=5),  # concursos por correo (1-10)
     _ts("last_run_at"),
     _ts("created_at", default=utcnow),
 )
@@ -81,6 +82,16 @@ alert_delivery = sa.Table(
     sa.Column("saved_search_id", sa.Integer, primary_key=True),
     sa.Column("ocid", sa.String(40), primary_key=True),
     _ts("sent_at", default=utcnow),
+)
+
+alert_sent = sa.Table(  # concursos enviados por correo a cada usuario (evita repetir en 7 días)
+    "alert_sent", metadata,
+    sa.Column("id", sa.Integer, primary_key=True),
+    sa.Column("user_id", sa.Integer, nullable=False),
+    sa.Column("ocid", sa.String(40), nullable=False),
+    sa.Column("saved_search_id", sa.Integer),
+    _ts("sent_at", default=utcnow),
+    sa.Index("ix_alert_sent_user", "user_id", "sent_at"),
 )
 
 inventory_item = sa.Table(
@@ -133,6 +144,8 @@ tender = sa.Table(
     sa.Column("buyer_name", sa.Text, nullable=False, default=""),
     sa.Column("buyer_norm", sa.Text, nullable=False, default=""),
     sa.Column("unit_name", sa.Text, nullable=False, default=""),
+    sa.Column("buyer_region", sa.String(120)),  # departamento de la entidad compradora
+    sa.Column("buyer_type", sa.String(120)),  # tipo de entidad (Gobierno Central, Municipalidades…)
     sa.Column("n_tenderers", sa.Integer),
     sa.Column("n_items", sa.Integer, nullable=False, default=0),
     sa.Column("unspsc_main", sa.String(8)),
@@ -148,6 +161,9 @@ tender = sa.Table(
     sa.Index("ix_tender_status_pub", "status_details", "published_at"),
     sa.Index("ix_tender_published", "published_at"),
     sa.Index("ix_tender_first_seen", "first_seen_at"),
+    sa.Index("ix_tender_region", "buyer_region"),
+    sa.Index("ix_tender_buyer_type", "buyer_type"),
+    sa.Index("ix_tender_category", "category"),
 )
 
 tender_item = sa.Table(

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends
 from fastapi.responses import HTMLResponse
@@ -10,7 +12,7 @@ from ..models import ingest_file, saved_search, tender, tender_item, party
 from ..security import admin_user, current_user, read_link
 from ..services.alerts import run_all
 from ..services.embeddings import embed_pending
-from ..services.search import open_cond
+from ..services.search import FACET_COLUMNS, NONE_VALUE, open_cond
 from ..services.text import normalize
 from .workspace import save_feedback
 
@@ -29,6 +31,23 @@ def classes(user=Depends(current_user), conn=Depends(get_conn)):
         sa.select(sa.func.substr(tender_item.c.unspsc, 1, 6).label("c"), sa.func.min(tender_item.c.description), sa.func.count().label("n"))
         .where(tender_item.c.unspsc != "").group_by("c").order_by(sa.desc("n")).limit(200)).all()
     return {"items": [{"code": c, "label": (d or "")[:60], "count": n} for c, d, n in rows]}
+
+
+_FACETS_CACHE: dict = {"t": 0.0, "data": None}
+FACETS_TTL = 900
+
+
+@router.get("/catalogs/facets")
+def facets(user=Depends(current_user), conn=Depends(get_conn)):
+    """Valores posibles (y conteo total) de cada filtro de selección múltiple. Caché 15 min."""
+    if _FACETS_CACHE["data"] is not None and time.time() - _FACETS_CACHE["t"] < FACETS_TTL:
+        return _FACETS_CACHE["data"]
+    out = {}
+    for key, col in FACET_COLUMNS.items():
+        rows = conn.execute(sa.select(col, sa.func.count().label("n")).group_by(col).order_by(sa.desc("n")).limit(300)).all()
+        out[key] = [{"value": v if v is not None else NONE_VALUE, "count": n} for v, n in rows]
+    _FACETS_CACHE.update(t=time.time(), data=out)
+    return out
 
 
 @router.get("/catalogs/buyers")

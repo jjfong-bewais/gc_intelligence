@@ -73,7 +73,7 @@ export default function TenderCard({ t, context, extra }: { t: Tender; context: 
           {sentenceCase(t.title)}
         </Link>
         <div className="text-[13px] text-stone-600">
-          {nameCase(t.buyer_name)}{t.unit_name ? ` · ${nameCase(t.unit_name)}` : ""} · NOG {t.nog}
+          {nameCase(t.buyer_name)}{t.unit_name ? ` · ${nameCase(t.unit_name)}` : ""}{t.department ? ` · ${nameCase(t.department)}` : ""} · NOG {t.nog}
         </div>
         {t.reason && <div className="text-xs text-stone-600">{t.reason.replace(/«([^»]+)»/g, (_, q) => `«${sentenceCase(q)}»`)}</div>}
         {extra}

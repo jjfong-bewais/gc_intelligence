@@ -49,7 +49,7 @@ export const ErrorBox = ({ error }: { error: unknown }) => (
 );
 
 export const KpiStrip = ({ children }: { children: ReactNode }) => (
-  <section aria-label="Indicadores" className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-stone-200 bg-stone-100 lg:grid-cols-4 [&>*]:bg-white">
+  <section aria-label="Indicadores" className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-stone-200 bg-stone-100 xl:grid-cols-4 [&>*]:bg-white">
     {children}
   </section>
 );

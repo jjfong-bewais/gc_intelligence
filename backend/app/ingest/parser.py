@@ -89,6 +89,10 @@ def parse_release(rel: dict) -> dict | None:
     pe = tdr.get("procuringEntity") or {}
     buyer_id = pe.get("id") or buyer.get("id")
     buyer_name = pe.get("name") or buyer.get("name") or ""
+    # Departamento y tipo de entidad: de la entidad compradora; si faltan, de su unidad.
+    buyers = [parties.get(buyer_id) or {}] + [p for p in parties.values() if p["kind"] in ("entity", "unit")]
+    buyer_region = next((p.get("region") for p in buyers if p.get("region")), None)
+    buyer_type = next((p.get("entity_type") for p in buyers if p.get("entity_type")), None)
 
     # ------------------------------------------------------------ ítems
     items: list[dict] = []
@@ -123,7 +127,8 @@ def parse_release(rel: dict) -> dict | None:
         "published_at": parse_dt(tdr.get("datePublished") or period.get("startDate")),
         "deadline_at": parse_dt(period.get("endDate")),
         "buyer_id": buyer_id, "buyer_name": buyer_name, "buyer_norm": normalize(buyer_name),
-        "unit_name": unit_name, "n_tenderers": tdr.get("numberOfTenderers"),
+        "unit_name": unit_name, "buyer_region": buyer_region, "buyer_type": buyer_type,
+        "n_tenderers": tdr.get("numberOfTenderers"),
         "n_items": len(items), "unspsc_main": unspsc_main,
         "release_date": rel.get("date"),
         "search_text": normalize(f"{nog} {title} " + " ".join(i["description"] for i in items))[:2000],

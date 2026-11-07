@@ -11,14 +11,18 @@ import sqlalchemy as sa
 from ..models import award, bid, party, tender, tender_item
 from .search import open_cond
 
-_CACHE: dict = {"t": 0.0, "data": None}
+_CACHE: dict[str, tuple[float, dict]] = {}  # clave de filtros -> (momento, datos)
 TTL = 600
+MAX_CACHED = 12
 
 
-def _matrix(conn: sa.Connection) -> dict:
-    """supplier -> {clase: participaciones}; clase = UNSPSC (6 dígitos) principal del concurso."""
-    if _CACHE["data"] is not None and time.time() - _CACHE["t"] < TTL:
-        return _CACHE["data"]
+def _matrix(conn: sa.Connection, conds: list | None = None, key: str = "") -> dict:
+    """supplier -> {clase: participaciones}; clase = UNSPSC (6 dígitos) principal del concurso.
+    `conds` restringe el universo de concursos (filtros duros); `key` identifica la caché."""
+    hit = _CACHE.get(key)
+    if hit and time.time() - hit[0] < TTL:
+        return hit[1]
+    conds = list(conds or [])
     part = sa.union(
         sa.select(bid.c.supplier_id.label("sid"), bid.c.ocid.label("ocid")).where(bid.c.supplier_id.is_not(None)),
         sa.select(award.c.supplier_id.label("sid"), award.c.ocid.label("ocid")).where(award.c.supplier_id.is_not(None)),
@@ -26,7 +30,7 @@ def _matrix(conn: sa.Connection) -> dict:
     rows = conn.execute(
         sa.select(part.c.sid, tender.c.unspsc_main, sa.func.count())
         .select_from(part.join(tender, tender.c.ocid == part.c.ocid))
-        .where(tender.c.unspsc_main.is_not(None))
+        .where(tender.c.unspsc_main.is_not(None), *conds)
         .group_by(part.c.sid, tender.c.unspsc_main)
     ).all()
     m: dict[str, dict[str, int]] = defaultdict(dict)
@@ -36,7 +40,7 @@ def _matrix(conn: sa.Connection) -> dict:
     for sid, cls, amt in conn.execute(
         sa.select(award.c.supplier_id, tender.c.unspsc_main, sa.func.sum(award.c.amount))
         .select_from(award.join(tender, tender.c.ocid == award.c.ocid))
-        .where(tender.c.unspsc_main.is_not(None)).group_by(award.c.supplier_id, tender.c.unspsc_main)
+        .where(tender.c.unspsc_main.is_not(None), *conds).group_by(award.c.supplier_id, tender.c.unspsc_main)
     ):
         amounts[(sid, cls)] = amt or 0.0
     df: dict[str, int] = defaultdict(int)
@@ -46,12 +50,14 @@ def _matrix(conn: sa.Connection) -> dict:
     n_sup = max(len(m), 1)
     idf = {c: math.log(1 + n_sup / (1 + d)) for c, d in df.items()}
     data = {"m": m, "idf": idf, "amounts": amounts}
-    _CACHE.update(t=time.time(), data=data)
+    if len(_CACHE) >= MAX_CACHED:
+        _CACHE.pop(min(_CACHE, key=lambda k: _CACHE[k][0]))
+    _CACHE[key] = (time.time(), data)
     return data
 
 
 def clear_cache() -> None:
-    _CACHE.update(t=0.0, data=None)
+    _CACHE.clear()
 
 
 def _vec(counts: dict[str, int], idf: dict[str, float]) -> dict[str, float]:
@@ -68,8 +74,9 @@ def _merge(counts_list: list[dict[str, int]]) -> dict[str, int]:
     return out
 
 
-def find_peers(conn: sa.Connection, supplier_ids: list[str], n_peers: int = 25, min_part: int = 3) -> list[dict]:
-    data = _matrix(conn)
+def find_peers(conn: sa.Connection, supplier_ids: list[str], n_peers: int = 25, min_part: int = 3,
+               data: dict | None = None) -> list[dict]:
+    data = data or _matrix(conn)
     own = _merge([data["m"].get(s, {}) for s in supplier_ids])
     if not own:
         return []
@@ -91,24 +98,31 @@ def find_peers(conn: sa.Connection, supplier_ids: list[str], n_peers: int = 25, 
     return top
 
 
-def _examples(conn: sa.Connection, cls: str, n: int = 3) -> list[str]:
+def _examples(conn: sa.Connection, cls: str, n: int = 3, conds: list | None = None) -> list[str]:
+    where = [tender_item.c.unspsc.like(f"{cls}%")]
+    if conds:
+        where.append(tender_item.c.ocid.in_(sa.select(tender.c.ocid).where(*conds)))
     rows = conn.execute(
         sa.select(tender_item.c.description, sa.func.count().label("c"))
-        .where(tender_item.c.unspsc.like(f"{cls}%"))
+        .where(*where)
         .group_by(tender_item.c.description).order_by(sa.desc("c")).limit(n)
     ).all()
     return [r[0] for r in rows]
 
 
-def opportunities(conn: sa.Connection, supplier_ids: list[str], limit: int = 30, n_peers: int = 25) -> dict:
-    data = _matrix(conn)
-    own = _merge([data["m"].get(s, {}) for s in supplier_ids])
-    peers = find_peers(conn, supplier_ids, n_peers)
+def opportunities(conn: sa.Connection, supplier_ids: list[str], limit: int = 30, n_peers: int = 25,
+                  conds: list | None = None, key: str = "") -> dict:
+    """`conds` (filtros duros) limita los concursos que cuentan como participación y los vigentes.
+    La semejanza entre proveedores se calcula siempre con todo el historial."""
+    full = _matrix(conn)
+    data = _matrix(conn, conds, key) if conds else full
+    own = _merge([full["m"].get(s, {}) for s in supplier_ids])
+    peers = find_peers(conn, supplier_ids, n_peers, data=full)
     if not peers:
         return {"peers": [], "opportunities": [], "own_classes": len(own)}
     agg: dict[str, dict] = {}
     for p in peers:
-        for cls, n in data["m"][p["id"]].items():
+        for cls, n in data["m"].get(p["id"], {}).items():
             if own.get(cls):
                 continue
             a = agg.setdefault(cls, {"cls": cls, "n_peers": 0, "peer_participations": 0, "weight": 0.0,
@@ -120,11 +134,11 @@ def opportunities(conn: sa.Connection, supplier_ids: list[str], limit: int = 30,
             a["peers"].append(p["name"])
     ranked = sorted((a for a in agg.values() if a["n_peers"] >= 2), key=lambda a: -a["weight"])[:limit]
     open_by_cls = {r[0]: r[1] for r in conn.execute(
-        sa.select(tender.c.unspsc_main, sa.func.count()).where(open_cond(), tender.c.unspsc_main.in_([a["cls"] for a in ranked]))
+        sa.select(tender.c.unspsc_main, sa.func.count()).where(open_cond(), *(conds or []), tender.c.unspsc_main.in_([a["cls"] for a in ranked]))
         .group_by(tender.c.unspsc_main))}
     out = []
     for a in ranked:
-        ex = _examples(conn, a["cls"])
+        ex = _examples(conn, a["cls"], conds=conds)
         out.append({
             "unspsc_class": a["cls"], "label": ex[0].title() if ex else a["cls"], "examples": ex,
             "n_peers": a["n_peers"], "peer_participations": a["peer_participations"],

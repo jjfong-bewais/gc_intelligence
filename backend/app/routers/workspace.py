@@ -6,12 +6,12 @@ from pydantic import BaseModel
 
 from ..config import settings
 from ..db import get_conn, utcnow
-from ..models import (alert_delivery, favorite, feedback, inventory_item, org_supplier, saved_search, tender)
+from ..models import (alert_delivery, alert_sent, favorite, feedback, inventory_item, org_supplier, saved_search, tender)
 from ..security import current_user
-from ..services.alerts import run_saved_searches
+from ..services.alerts import REPEAT_WINDOW, pick_for_saved, run_saved_searches
 from ..services.inventory import import_inventory, parse_csv
-from ..services.recommend import inventory_matches
-from ..services.search import Filters, hydrate, search_tenders
+from ..services.recommend import build_profile, inventory_matches
+from ..services.search import Filters, accepting_cond, build_conds, hydrate, search_tenders
 
 router = APIRouter(tags=["workspace"])
 
@@ -108,7 +108,8 @@ class SavedBody(BaseModel):
     mode: str = "hybrid"
     filters: dict = {}
     frequency: str = "daily"
-    active: bool = True
+    active: bool = True  # enviar correos
+    max_items: int = 5  # concursos por correo (1-10)
 
 
 def _own(conn, sid: int, user) -> dict:
@@ -127,6 +128,10 @@ def _check(b: SavedBody) -> None:
         raise HTTPException(400, "Frecuencia inválida")
     if b.mode not in ("keyword", "semantic", "hybrid"):
         raise HTTPException(400, "Modo inválido")
+    if not 1 <= b.max_items <= 10:
+        raise HTTPException(400, "La cantidad por correo debe estar entre 1 y 10")
+    if not b.name.strip():
+        raise HTTPException(400, "Ponle un nombre a la combinación")
 
 
 @router.get("/saved-searches")
@@ -139,8 +144,8 @@ def list_saved(user=Depends(current_user), conn=Depends(get_conn)):
 def create_saved(body: SavedBody, user=Depends(current_user), conn=Depends(get_conn)):
     _check(body)
     sid = conn.execute(sa.insert(saved_search).values(
-        user_id=user["id"], name=body.name, q=body.q, mode=body.mode, filters=body.filters,
-        frequency=body.frequency, active=body.active, last_run_at=utcnow(), created_at=utcnow(),
+        user_id=user["id"], name=body.name.strip(), q=body.q, mode=body.mode, filters=body.filters,
+        frequency=body.frequency, active=body.active, max_items=body.max_items, last_run_at=None, created_at=utcnow(),
     )).inserted_primary_key[0]
     return _ser(_own(conn, sid, user))
 
@@ -150,7 +155,8 @@ def update_saved(sid: int, body: SavedBody, user=Depends(current_user), conn=Dep
     _own(conn, sid, user)
     _check(body)
     conn.execute(sa.update(saved_search).where(saved_search.c.id == sid).values(
-        name=body.name, q=body.q, mode=body.mode, filters=body.filters, frequency=body.frequency, active=body.active))
+        name=body.name.strip(), q=body.q, mode=body.mode, filters=body.filters, frequency=body.frequency,
+        active=body.active, max_items=body.max_items))
     return _ser(_own(conn, sid, user))
 
 
@@ -164,9 +170,22 @@ def delete_saved(sid: int, user=Depends(current_user), conn=Depends(get_conn)):
 
 @router.get("/saved-searches/{sid}/preview")
 def preview_saved(sid: int, user=Depends(current_user), conn=Depends(get_conn)):
+    """Cuántos concursos vigentes cumplen la combinación y cuáles irían en el próximo correo."""
     s = _own(conn, sid, user)
-    hits, total = search_tenders(conn, s["q"], s["mode"], Filters.from_dict(s["filters"]), limit=20)
-    return {"total": total, "items": hydrate(conn, hits, user["id"])}
+    now = utcnow()
+    f = Filters.from_dict(s["filters"])
+    _, total = search_tenders(conn, s["q"], s["mode"], f, limit=1, extra_conds=[accepting_cond(now), *build_conds(f)])
+    sids = list(conn.execute(sa.select(org_supplier.c.supplier_id).where(org_supplier.c.org_id == user["org_id"])).scalars())
+    prof = build_profile(conn, sids, user["id"])
+    ex = set(conn.execute(sa.select(alert_sent.c.ocid).where(
+        alert_sent.c.user_id == user["id"], alert_sent.c.sent_at > now - REPEAT_WINDOW)).scalars())
+    ex |= set(conn.execute(sa.select(favorite.c.ocid).where(favorite.c.user_id == user["id"])).scalars()) | set(prof["negatives"])
+    picks = pick_for_saved(conn, s, prof, ex, now)
+    items = hydrate(conn, picks, user["id"])
+    by = {p["ocid"]: p for p in picks}
+    for i in items:
+        i["reason"] = by[i["ocid"]]["reason"]
+    return {"total": total, "items": items}
 
 
 # ---- inventario
@@ -208,4 +227,4 @@ def inv_matches(limit: int = 40, user=Depends(current_user), conn=Depends(get_co
 
 @router.post("/alerts/run")
 def run_my_alerts(user=Depends(current_user), conn=Depends(get_conn)):
-    return run_saved_searches(conn, force=True)
+    return run_saved_searches(conn, force=True, user_id=user["id"])

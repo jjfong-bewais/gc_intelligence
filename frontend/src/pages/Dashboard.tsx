@@ -3,7 +3,9 @@ import { FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, Tender } from "../api";
 import { IconClock, IconSearch } from "../components/icons";
+import FilterPanel, { WithFilters } from "../components/FilterPanel";
 import TenderCard from "../components/TenderCard";
+import { countActive, describe, filterQuery, useViewFilters } from "../filters";
 import { Empty, ErrorBox, Kpi, KpiStrip, Loading, Section } from "../components/ui";
 import { greeting, money, num, todayLong } from "../format";
 
@@ -12,8 +14,10 @@ const MONTHS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "
 export default function Dashboard() {
   const nav = useNavigate();
   const [q, setQ] = useState("");
-  const r = useQuery({ queryKey: ["dashboard"], queryFn: () => api("/dashboard") });
-  const submit = (e: FormEvent) => { e.preventDefault(); nav("/search", { state: { q } }); };
+  const [filters, setFilters] = useViewFilters("dashboard");
+  const fq = filterQuery(filters);
+  const r = useQuery({ queryKey: ["dashboard", fq], queryFn: () => api(`/dashboard${fq ? `?${fq}` : ""}`), placeholderData: (p) => p });
+  const submit = (e: FormEvent) => { e.preventDefault(); nav("/search", { state: { q, filters } }); };
 
   return (
     <div className="flex flex-col gap-8">
@@ -29,7 +33,10 @@ export default function Dashboard() {
         </form>
       </header>
 
-      {r.isLoading ? <Loading /> : r.error ? <ErrorBox error={r.error} /> : <Body d={r.data} />}
+      <WithFilters f={filters} panel={<FilterPanel value={filters} onChange={setFilters} />}>
+        {countActive(filters) > 0 && <p className="-mb-3 text-xs text-stone-600">Con filtros: {describe(filters)}</p>}
+        {r.isLoading ? <Loading /> : r.error ? <ErrorBox error={r.error} /> : <div className={`flex flex-col gap-8 transition-opacity ${r.isFetching ? "opacity-60" : ""}`}><Body d={r.data} /></div>}
+      </WithFilters>
     </div>
   );
 }
@@ -43,7 +50,7 @@ function Body({ d }: { d: any }) {
   return (
     <>
       <KpiStrip>
-        <Kpi label="Concursos vigentes" value={num(k.open)} hint={k.new_7d && k.new_7d < k.open ? `${num(k.new_7d)} nuevos esta semana` : "en toda Guatecompras"} />
+        <Kpi label="Concursos vigentes" value={num(k.open)} hint={k.new_7d && k.new_7d < k.open ? `${num(k.new_7d)} nuevos esta semana` : d.filtered ? "con tus filtros" : "en toda Guatecompras"} />
         <Kpi label="En seguimiento" value={num(k.favorites)} hint={k.favorites ? "ver en Seguimiento" : "marca concursos para seguirlos"} />
         <Kpi label="Coincidencias con inventario" value={k.inventory_items ? num(k.inventory_matches) : <span className="text-stone-400">—</span>}
           hint={k.inventory_items ? `de ${num(k.inventory_items)} productos` : undefined}
@@ -55,7 +62,7 @@ function Body({ d }: { d: any }) {
       <Section title="Recomendados para ti" more="/recommendations" moreLabel="Ver todos">
         {d.recommended.length ? (
           <div className="list">{d.recommended.map((t: Tender) => <TenderCard key={t.ocid} t={t} context="dashboard" />)}</div>
-        ) : <Empty>Configura tus NIT en Ajustes o marca concursos con “Me interesa” para recibir recomendaciones.</Empty>}
+        ) : <Empty>{d.filtered ? "Ningún concurso recomendado cumple los filtros." : "Configura tus NIT en Ajustes o marca concursos con “Me interesa” para recibir recomendaciones."}</Empty>}
       </Section>
 
       <div className="grid gap-6 md:grid-cols-2">

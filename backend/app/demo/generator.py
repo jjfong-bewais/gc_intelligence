@@ -51,6 +51,8 @@ ENTITIES = [
     ("INSTITUTO DE SEGURIDAD DEMO", "Entidades Descentralizadas y Autónomas", "Instituto"),
 ]
 
+DEPARTMENTS = ["GUATEMALA", "QUETZALTENANGO", "ALTA VERAPAZ", "ESCUINTLA", "HUEHUETENANGO", "PETÉN", "SAN MARCOS", "IZABAL"]
+
 _PREFIX = ["COMERCIAL", "DISTRIBUIDORA", "SUMINISTROS", "INVERSIONES", "GRUPO", "SERVICIOS", "IMPORTADORA", "PROVEEDORA"]
 _WORDS = ["ALFA", "BETA", "DELTA", "OMEGA", "SOLAR", "NORTE", "SUR", "ANDINA", "VOLCÁN", "QUETZAL", "CEIBA", "MAYA",
           "ATLAS", "NOVA", "PRISMA", "ÁGUILA", "TIKAL", "LAGO", "PACÍFICO", "ALTIPLANO", "ZENIT", "ORIÓN", "LUNA", "ROBLE"]
@@ -105,7 +107,8 @@ def generate(now: datetime | None = None, seed: int = 42, n_historical: int = 90
     for i, (name, etype, level) in enumerate(ENTITIES):
         eid = f"GT-CISP-{21100000 + i * 37}"
         units = [(f"GT-GCUC-{10 + i}-{u}", f"{name.split(',')[0].title()} · Unidad {u}") for u in range(1, 4)]
-        entities.append({"id": eid, "name": name, "etype": etype, "level": level, "units": units})
+        entities.append({"id": eid, "name": name, "etype": etype, "level": level, "units": units,
+                         "region": DEPARTMENTS[i % len(DEPARTMENTS)]})
 
     records: list[dict] = []
     seq = 0
@@ -193,7 +196,7 @@ def generate(now: datetime | None = None, seed: int = 42, n_historical: int = 90
 
         parties = [
             {"identifier": {"scheme": "GT-CISP", "id": ent["id"].split("-")[-1]},
-             "address": {"region": "GUATEMALA", "countryName": "GUATEMALA"},
+             "address": {"region": ent["region"], "countryName": "GUATEMALA"},
              "contactPoint": {"name": ent["name"]}, "roles": ["buyer"],
              "details": {"level": {"description": ent["level"], "id": "1"},
                          "entityType": {"description": ent["etype"], "id": "1"}, "type": {"description": "Sector Público", "id": "1"}},

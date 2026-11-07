@@ -21,7 +21,7 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
 
 export type Tender = {
   ocid: string; nog: number; title: string; status: string; status_details: string; is_open: boolean;
-  method: string; buyer_name: string; unit_name: string; published_at: string | null; deadline_at: string | null;
+  method: string; category?: string; department?: string | null; entity_type?: string | null; buyer_name: string; unit_name: string; published_at: string | null; deadline_at: string | null;
   n_tenderers: number | null; n_items: number; unspsc: string | null; awarded_total: number | null;
   winners: string[]; favorite: string | null; feedback: number; score: number | null; reason: string;
   portal_url: string; note?: string; matches?: any[];
