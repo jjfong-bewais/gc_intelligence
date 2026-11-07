@@ -15,12 +15,13 @@ from .config import settings
 from .routers import auth, insights, misc, suppliers, tenders, workspace
 from .schema import init_db
 
-log = logging.getLogger("gc")
+log = logging.getLogger("uvicorn.error")  # sale en los logs de Fly
 
 
 def _init_db_background() -> None:
     try:
         init_db(heavy=False)  # idempotente; rellenos e índices grandes los hace la ingesta (CLI)
+        log.info("init_db listo")
     except Exception:  # la base puede estar despertando (Neon); el healthcheck lo mostrará
         log.exception("init_db falló")
 

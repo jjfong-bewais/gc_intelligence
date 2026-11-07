@@ -1,11 +1,16 @@
 """Creación del esquema e índices (extensiones e índices específicos de Postgres)."""
 from __future__ import annotations
 
+import logging
+import time
+
 import sqlalchemy as sa
 
 from .config import settings
 from .db import IS_PG, engine
 from .models import metadata, tender
+
+log = logging.getLogger("uvicorn.error")  # sale en los logs de Fly
 
 # Columnas agregadas después de la primera versión: (tabla, columna, DDL).
 NEW_COLUMNS = [
@@ -16,17 +21,34 @@ NEW_COLUMNS = [
 ]
 
 
+def _add_columns(attempts: int = 10) -> None:
+    """Una transacción corta por columna (si no, el ALTER de una tabla queda esperando a otra
+    mientras las peticiones leen ambas: deadlock). Reintenta si la tabla está ocupada."""
+    for table, col, ddl in NEW_COLUMNS:
+        for i in range(attempts):
+            try:
+                with engine.begin() as conn:
+                    if col in {c["name"] for c in sa.inspect(conn).get_columns(table)}:
+                        break
+                    if IS_PG:
+                        conn.execute(sa.text("SET LOCAL lock_timeout = '3s'"))
+                        conn.execute(sa.text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} {ddl}"))
+                    else:
+                        conn.execute(sa.text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
+                log.warning("migración: columna %s.%s agregada", table, col)
+                break
+            except sa.exc.OperationalError as e:  # lock_timeout o deadlock: reintentar
+                if i == attempts - 1:
+                    raise
+                log.warning("migración: %s.%s ocupada (%s); reintento %d", table, col, type(e.orig).__name__, i + 1)
+                time.sleep(2 + i)
+
+
 def _migrate(heavy: bool) -> None:
     """Agrega columnas nuevas a bases existentes (create_all no altera tablas).
     Agregar una columna nula es instantáneo; con `heavy` además rellena datos y crea índices
     sobre `tender`, lo que en producción tarda: se hace en la ingesta (CLI), no al arrancar la API."""
-    with engine.begin() as conn:
-        if IS_PG:  # no quedarse esperando detrás de la ingesta si la tabla está ocupada
-            conn.execute(sa.text("SET LOCAL lock_timeout = '15s'"))
-        insp = sa.inspect(conn)
-        for table, col, ddl in NEW_COLUMNS:
-            if col not in {c["name"] for c in insp.get_columns(table)}:
-                conn.execute(sa.text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
+    _add_columns()
     if not heavy:
         return
     backfill_buyer_fields()
