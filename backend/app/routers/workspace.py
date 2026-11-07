@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import re
+
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from ..config import settings
 from ..db import get_conn, utcnow
-from ..models import (alert_delivery, alert_sent, favorite, feedback, inventory_item, org_supplier, saved_search, tender)
+from ..models import (alert_delivery, alert_sent, favorite, feedback, inventory_item, org_supplier, party, saved_search, tender)
+from ..services.history import org_history
 from ..security import current_user
 from ..services.alerts import REPEAT_WINDOW, pick_for_saved, run_saved_searches
 from ..services.inventory import import_inventory, parse_csv
@@ -28,14 +31,93 @@ class Nits(BaseModel):
     supplier_ids: list[str]
 
 
+NIT_RE = re.compile(r"^[0-9]{1,14}K?$")
+
+
+def norm_nit(raw: str) -> str:
+    """'GT-NIT-1234567-8', '1234567-8', ' 104812869 ' → 'GT-NIT-12345678' (sin guiones ni espacios)."""
+    s = raw.strip().upper()
+    if s.startswith("GT-NIT-"):
+        s = s[7:]
+    s = re.sub(r"[\s\-.]", "", s)
+    if not NIT_RE.match(s):
+        raise HTTPException(400, "El NIT solo puede tener números (y una K al final)")
+    return f"GT-NIT-{s}"
+
+
+def _org_nits(conn, org_id: int) -> list[dict]:
+    rows = conn.execute(sa.select(org_supplier.c.supplier_id, org_supplier.c.label, party.c.name)
+                        .select_from(org_supplier.outerjoin(party, party.c.id == org_supplier.c.supplier_id))
+                        .where(org_supplier.c.org_id == org_id).order_by(org_supplier.c.label, org_supplier.c.supplier_id)).all()
+    return [{"id": s, "nit": s.replace("GT-NIT-", ""), "label": lbl or "", "name": name, "found": name is not None}
+            for s, lbl, name in rows]
+
+
+class NitBody(BaseModel):
+    nit: str
+    label: str = ""
+
+
+def _label(b: NitBody) -> str:
+    lbl = b.label.strip()
+    if not lbl:
+        raise HTTPException(400, "Escribe un nombre de identificación")
+    return lbl[:200]
+
+
+@router.get("/org/suppliers")
+def list_nits(user=Depends(current_user), conn=Depends(get_conn)):
+    return {"items": _org_nits(conn, user["org_id"])}
+
+
+@router.post("/org/suppliers")
+def add_nit(body: NitBody, user=Depends(current_user), conn=Depends(get_conn)):
+    sid, lbl = norm_nit(body.nit), _label(body)
+    if conn.execute(sa.select(org_supplier.c.supplier_id).where(org_supplier.c.org_id == user["org_id"],
+                                                                org_supplier.c.supplier_id == sid)).first():
+        raise HTTPException(409, "Ese NIT ya está en tu lista")
+    conn.execute(sa.insert(org_supplier).values(org_id=user["org_id"], supplier_id=sid, label=lbl))
+    return {"items": _org_nits(conn, user["org_id"])}
+
+
+@router.put("/org/suppliers/{nit}")
+def update_nit(nit: str, body: NitBody, user=Depends(current_user), conn=Depends(get_conn)):
+    old, new, lbl = norm_nit(nit), norm_nit(body.nit), _label(body)
+    where = (org_supplier.c.org_id == user["org_id"], org_supplier.c.supplier_id == old)
+    if not conn.execute(sa.select(org_supplier.c.supplier_id).where(*where)).first():
+        raise HTTPException(404, "NIT no encontrado")
+    if new != old and conn.execute(sa.select(org_supplier.c.supplier_id).where(
+            org_supplier.c.org_id == user["org_id"], org_supplier.c.supplier_id == new)).first():
+        raise HTTPException(409, "Ese NIT ya está en tu lista")
+    conn.execute(sa.update(org_supplier).where(*where).values(supplier_id=new, label=lbl))
+    return {"items": _org_nits(conn, user["org_id"])}
+
+
+@router.delete("/org/suppliers/{nit}")
+def delete_nit(nit: str, user=Depends(current_user), conn=Depends(get_conn)):
+    conn.execute(sa.delete(org_supplier).where(org_supplier.c.org_id == user["org_id"],
+                                               org_supplier.c.supplier_id == norm_nit(nit)))
+    return {"items": _org_nits(conn, user["org_id"])}
+
+
 @router.put("/org/suppliers")
 def set_nits(body: Nits, user=Depends(current_user), conn=Depends(get_conn)):
-    ids = sorted({s.strip() for s in body.supplier_ids if s.strip()})
-    ids = [s if s.startswith("GT-NIT-") else f"GT-NIT-{s}" for s in ids]
+    """Reemplazo masivo (compatibilidad); conserva el nombre de los NIT que se mantienen."""
+    ids = sorted({norm_nit(s) for s in body.supplier_ids if s.strip()})
+    keep = dict(conn.execute(sa.select(org_supplier.c.supplier_id, org_supplier.c.label)
+                             .where(org_supplier.c.org_id == user["org_id"])).all())
     conn.execute(sa.delete(org_supplier).where(org_supplier.c.org_id == user["org_id"]))
     if ids:
-        conn.execute(sa.insert(org_supplier), [{"org_id": user["org_id"], "supplier_id": s} for s in ids])
+        conn.execute(sa.insert(org_supplier), [{"org_id": user["org_id"], "supplier_id": s, "label": keep.get(s, "")} for s in ids])
     return {"supplier_ids": ids}
+
+
+@router.get("/org/history")
+def history(user=Depends(current_user), conn=Depends(get_conn)):
+    """Resumen del histórico en Guatecompras de los NIT de la organización."""
+    labels = dict(conn.execute(sa.select(org_supplier.c.supplier_id, org_supplier.c.label)
+                               .where(org_supplier.c.org_id == user["org_id"])).all())
+    return org_history(conn, labels)
 
 
 # ---- favoritos

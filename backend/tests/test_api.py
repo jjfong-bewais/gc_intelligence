@@ -175,3 +175,46 @@ def test_saved_combination_preview_and_limits(client):
 def test_admin_status(client):
     s = client.get("/api/v1/admin/status").json()
     assert s["tenders"] > 0 and s["without_embedding"] == 0
+
+
+def test_nit_crud_and_history(client):
+    base = client.get("/api/v1/org/suppliers").json()["items"]
+    assert base, "la cuenta demo trae un NIT"
+    demo = base[0]
+    # agregar (normaliza guiones y prefijo) y validar
+    assert client.post("/api/v1/org/suppliers", json={"nit": "123-456-7", "label": ""}).status_code == 400
+    assert client.post("/api/v1/org/suppliers", json={"nit": "12A45", "label": "X"}).status_code == 400
+    items = client.post("/api/v1/org/suppliers", json={"nit": "123-456-7", "label": "Sucursal"}).json()["items"]
+    assert any(i["id"] == "GT-NIT-1234567" and i["label"] == "Sucursal" and not i["found"] for i in items)
+    assert client.post("/api/v1/org/suppliers", json={"nit": "GT-NIT-1234567", "label": "Otra"}).status_code == 409
+    # editar NIT y nombre
+    items = client.put("/api/v1/org/suppliers/1234567", json={"nit": "7654321K", "label": "Sucursal 2"}).json()["items"]
+    assert any(i["id"] == "GT-NIT-7654321K" and i["label"] == "Sucursal 2" for i in items)
+    assert client.put("/api/v1/org/suppliers/999", json={"nit": "1", "label": "x"}).status_code == 404
+    assert client.put("/api/v1/org/suppliers/7654321K", json={"nit": demo["nit"], "label": "x"}).status_code == 409
+    client.put(f"/api/v1/org/suppliers/{demo['nit']}", json={"nit": demo["nit"], "label": "Principal"})
+    # historial
+    h = client.get("/api/v1/org/history").json()
+    assert h["has_data"]
+    t = h["totals"]
+    assert t["participated"] == t["won"] + t["lost"] + t["in_progress"] + t["void"]
+    assert t["won"] > 0 and 0 <= t["win_rate"] <= 1
+    assert {n["id"] for n in h["by_nit"]} == {demo["id"], "GT-NIT-7654321K"}
+    main = next(n for n in h["by_nit"] if n["id"] == demo["id"])
+    assert main["label"] == "Principal" and main["won"] == t["won"]
+    assert len(h["recent"]["won"]) == min(t["won"], 50) and all(i["nog"] for i in h["recent"]["won"])
+    assert sum(m["participated"] for m in h["monthly"]) == t["participated"]
+    # eliminar
+    items = client.delete("/api/v1/org/suppliers/7654321K").json()["items"]
+    assert [i["id"] for i in items] == [demo["id"]]
+    assert client.get("/api/v1/auth/me").json()["supplier_ids"] == [demo["id"]]
+
+
+def test_change_email(client):
+    me = client.get("/api/v1/auth/me").json()
+    assert client.put("/api/v1/auth/email", json={"email": "nuevo@empresa.gt", "password": "mala"}).status_code == 403
+    assert client.put("/api/v1/auth/email", json={"email": "no-es-correo", "password": "demo1234"}).status_code == 400
+    r = client.put("/api/v1/auth/email", json={"email": " Nuevo@Empresa.gt ", "password": "demo1234"})
+    assert r.status_code == 200 and r.json()["email"] == "nuevo@empresa.gt"
+    assert client.get("/api/v1/auth/me").json()["email"] == "nuevo@empresa.gt"
+    client.put("/api/v1/auth/email", json={"email": me["email"], "password": "demo1234"})

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -17,12 +18,18 @@ from .schema import init_db
 log = logging.getLogger("gc")
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
+def _init_db_background() -> None:
     try:
-        init_db()  # idempotente
+        init_db(heavy=False)  # idempotente; rellenos e índices grandes los hace la ingesta (CLI)
     except Exception:  # la base puede estar despertando (Neon); el healthcheck lo mostrará
         log.exception("init_db falló")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # En un hilo aparte: uvicorn no abre el puerto hasta que termina el arranque, y si la base
+    # tarda (Neon despertando, candados de la ingesta) Fly da la máquina por caída.
+    threading.Thread(target=_init_db_background, name="init-db", daemon=True).start()
     yield
 
 

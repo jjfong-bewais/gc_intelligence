@@ -19,6 +19,8 @@
   .btn-primary { @apply border-zinc-900 bg-zinc-900 text-white hover:bg-zinc-800; }
   .btn-icon { @apply inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-600 transition-colors hover:bg-stone-50 hover:text-zinc-900; }
   .btn-icon.is-on { @apply border-brand-200 bg-brand-50 text-brand-700; }
+  .action-pill { @apply inline-flex min-h-8 items-center rounded-full bg-brand-50 px-3.5 text-[11px] font-semibold uppercase tracking-[0.04em] text-brand-700 transition-colors hover:bg-brand-100 disabled:opacity-50; }
+  .action-pill.is-danger { @apply bg-red-50 text-red-700 hover:bg-red-100; }
   .btn-ghost { @apply inline-flex min-h-9 items-center gap-2 rounded-lg px-3 text-[13px] font-medium text-stone-700 hover:bg-stone-100; }
 
   /* Formularios */

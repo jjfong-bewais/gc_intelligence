@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
@@ -70,3 +72,26 @@ def logout(resp: Response):
 @router.get("/me")
 def me(user=Depends(current_user), conn=Depends(get_conn)):
     return public_user(conn, user)
+
+
+class EmailChange(BaseModel):
+    email: str
+    password: str
+
+
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+@router.put("/email")
+def change_email(body: EmailChange, user=Depends(current_user), conn=Depends(get_conn)):
+    """Cambia el correo de la cuenta (con él se inicia sesión y a él llegan las alertas)."""
+    email = body.email.strip().lower()
+    if not EMAIL_RE.match(email) or len(email) > 200:
+        raise HTTPException(400, "Escribe un correo válido")
+    if not verify_password(body.password, user["password_hash"]):
+        raise HTTPException(403, "La contraseña no es correcta")
+    if email != user["email"] and conn.execute(sa.select(app_user.c.id).where(app_user.c.email == email)).first():
+        raise HTTPException(409, "Ese correo ya está en uso")
+    conn.execute(sa.update(app_user).where(app_user.c.id == user["id"]).values(email=email))
+    u = conn.execute(sa.select(app_user).where(app_user.c.id == user["id"])).mappings().first()
+    return public_user(conn, dict(u))

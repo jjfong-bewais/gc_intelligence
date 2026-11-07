@@ -30,6 +30,7 @@ org_supplier = sa.Table(  # NIT propios de la organización
     "org_supplier", metadata,
     sa.Column("org_id", sa.Integer, primary_key=True),
     sa.Column("supplier_id", sa.String(40), primary_key=True),  # GT-NIT-123456
+    sa.Column("label", sa.String(200), nullable=False, default=""),  # nombre de identificación
 )
 
 app_user = sa.Table(

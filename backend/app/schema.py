@@ -12,46 +12,69 @@ NEW_COLUMNS = [
     ("tender", "buyer_region", "VARCHAR(120)"),
     ("tender", "buyer_type", "VARCHAR(120)"),
     ("saved_search", "max_items", "INTEGER NOT NULL DEFAULT 5"),
+    ("org_supplier", "label", "VARCHAR(200) NOT NULL DEFAULT ''"),
 ]
 
 
-def _migrate() -> None:
-    """Agrega columnas e índices nuevos a bases existentes (create_all no altera tablas)."""
+def _migrate(heavy: bool) -> None:
+    """Agrega columnas nuevas a bases existentes (create_all no altera tablas).
+    Agregar una columna nula es instantáneo; con `heavy` además rellena datos y crea índices
+    sobre `tender`, lo que en producción tarda: se hace en la ingesta (CLI), no al arrancar la API."""
     with engine.begin() as conn:
+        if IS_PG:  # no quedarse esperando detrás de la ingesta si la tabla está ocupada
+            conn.execute(sa.text("SET LOCAL lock_timeout = '15s'"))
         insp = sa.inspect(conn)
-        added = set()
         for table, col, ddl in NEW_COLUMNS:
             if col not in {c["name"] for c in insp.get_columns(table)}:
                 conn.execute(sa.text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
-                added.add(col)
-        if "buyer_region" in added or "buyer_type" in added:
-            backfill_buyer_fields(conn)
+    if not heavy:
+        return
+    backfill_buyer_fields()
+    with engine.begin() as conn:
         have = {i["name"] for i in sa.inspect(conn).get_indexes("tender")}
         for ix in tender.indexes:
             if ix.name not in have:
                 ix.create(conn)
 
 
-def backfill_buyer_fields(conn: sa.Connection) -> None:
-    """Copia departamento y tipo de entidad desde `party` a los concursos ya cargados."""
+BACKFILL_BATCH = 20_000
+
+
+def backfill_buyer_fields() -> int:
+    """Copia departamento y tipo de entidad desde `party` a los concursos que aún no los tienen.
+    Por lotes (una transacción cada uno) para no bloquear la tabla. Devuelve filas actualizadas."""
+    pending = (
+        "SELECT t2.ocid FROM tender t2 JOIN party p2 ON p2.id = t2.buyer_id "
+        "WHERE (t2.buyer_region IS NULL AND p2.region IS NOT NULL) "
+        "OR (t2.buyer_type IS NULL AND p2.entity_type IS NOT NULL) LIMIT :n"
+    )
     if IS_PG:
-        conn.execute(sa.text(
-            "UPDATE tender t SET buyer_region = p.region, buyer_type = p.entity_type "
-            "FROM party p WHERE p.id = t.buyer_id AND (t.buyer_region IS NULL OR t.buyer_type IS NULL)"))
+        sql = ("UPDATE tender t SET buyer_region = COALESCE(t.buyer_region, p.region), "
+               "buyer_type = COALESCE(t.buyer_type, p.entity_type) FROM party p "
+               f"WHERE p.id = t.buyer_id AND t.ocid IN ({pending})")
     else:
-        conn.execute(sa.text(
-            "UPDATE tender SET buyer_region = (SELECT region FROM party WHERE party.id = tender.buyer_id), "
-            "buyer_type = (SELECT entity_type FROM party WHERE party.id = tender.buyer_id) "
-            "WHERE buyer_region IS NULL OR buyer_type IS NULL"))
+        sql = ("UPDATE tender SET "
+               "buyer_region = COALESCE(buyer_region, (SELECT region FROM party WHERE party.id = tender.buyer_id)), "
+               "buyer_type = COALESCE(buyer_type, (SELECT entity_type FROM party WHERE party.id = tender.buyer_id)) "
+               f"WHERE ocid IN ({pending})")
+    total = 0
+    while True:
+        with engine.begin() as conn:
+            n = conn.execute(sa.text(sql), {"n": BACKFILL_BATCH}).rowcount or 0
+        total += n
+        if n < BACKFILL_BATCH:
+            return total
 
 
-def init_db() -> None:
+def init_db(heavy: bool = True) -> None:
+    """Idempotente. `heavy=False` (arranque de la API): solo lo instantáneo, para que el
+    servidor escuche de inmediato y pase el healthcheck de Fly."""
     if IS_PG:
         with engine.begin() as conn:
             conn.execute(sa.text("CREATE EXTENSION IF NOT EXISTS vector"))
             conn.execute(sa.text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
     metadata.create_all(engine)
-    _migrate()
+    _migrate(heavy)
     if IS_PG:
         ops = "halfvec_cosine_ops" if settings.pgvector_type == "halfvec" else "vector_cosine_ops"
         stmts = [
