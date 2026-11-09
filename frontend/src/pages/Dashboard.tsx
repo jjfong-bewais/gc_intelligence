@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { FormEvent, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api, Tender } from "../api";
 import { IconClock, IconSearch } from "../components/icons";
 import FilterPanel, { WithFilters } from "../components/FilterPanel";
@@ -32,6 +32,8 @@ export default function Dashboard() {
             className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-stone-500" />
         </form>
       </header>
+
+      <GuideNotice />
 
       <WithFilters f={filters} panel={<FilterPanel value={filters} onChange={setFilters} />}>
         {countActive(filters) > 0 && <p className="-mb-3 text-xs text-stone-600">Con filtros: {describe(filters)}</p>}
@@ -107,5 +109,20 @@ function Body({ d }: { d: any }) {
         </Section>
       )}
     </>
+  );
+}
+
+/** Aviso para usuarios nuevos: lleva a la Guía. Se oculta para siempre al cerrarlo o abrir la guía. */
+function GuideNotice() {
+  const KEY = "gc.guideNotice.dismissed";
+  const [hidden, setHidden] = useState(() => { try { return localStorage.getItem(KEY) === "1"; } catch { return false; } });
+  if (hidden) return null;
+  const dismiss = () => { try { localStorage.setItem(KEY, "1"); } catch { /* sin almacenamiento */ } setHidden(true); };
+  return (
+    <div className="-mt-3 flex flex-wrap items-center gap-3 rounded-2xl border border-brand-200 bg-brand-50 px-5 py-3.5 text-[13px] text-brand-800">
+      <span className="min-w-0 flex-1"><b className="font-semibold">¿Primera vez aquí?</b> Descubre todo lo que puedes hacer: buscar, comparar precios, recibir recomendaciones y alertas.</span>
+      <Link to="/guide" onClick={dismiss} className="btn">Ver la guía →</Link>
+      <button type="button" onClick={dismiss} aria-label="Cerrar aviso" className="btn-ghost px-2 text-brand-800 hover:bg-brand-100">✕</button>
+    </div>
   );
 }

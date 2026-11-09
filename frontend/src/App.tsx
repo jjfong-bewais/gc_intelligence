@@ -6,6 +6,7 @@ import { IconLogout, IconSearch } from "./components/icons";
 import Alerts from "./pages/Alerts";
 import Dashboard from "./pages/Dashboard";
 import Favorites from "./pages/Favorites";
+import Guide from "./pages/Guide";
 import Inventory from "./pages/Inventory";
 import Login from "./pages/Login";
 import Opportunities from "./pages/Opportunities";
@@ -19,6 +20,7 @@ const GROUPS: { title: string; items: [string, string][] }[] = [
   { title: "Descubrir", items: [["/", "Resumen"], ["/search", "Buscar"], ["/recommendations", "Para ti"], ["/opportunities", "Oportunidades"]] },
   { title: "Mi trabajo", items: [["/favorites", "Seguimiento"], ["/inventory", "Inventario"], ["/alerts", "Alertas"]] },
   { title: "Mercado", items: [["/suppliers", "Proveedores"]] },
+  { title: "Ayuda", items: [["/guide", "Guía"]] },
 ];
 
 const linkCls = ({ isActive }: { isActive: boolean }) =>
@@ -113,6 +115,7 @@ export default function App() {
             <Route path="/alerts" element={<Alerts />} />
             <Route path="/suppliers" element={<Suppliers />} />
             <Route path="/suppliers/:sid" element={<Suppliers />} />
+            <Route path="/guide" element={<Guide />} />
             <Route path="/settings" element={<Settings user={u} />} />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>

@@ -8,6 +8,7 @@ import TenderCard from "../components/TenderCard";
 import { Empty, ErrorBox, Loading, Page, Segmented } from "../components/ui";
 import { clean, describe, Filters, fromSaved, SavedCombo, useViewFilters } from "../filters";
 import { num } from "../format";
+import { HelpLink } from "./Guide";
 
 const MODES = [["hybrid", "Inteligente"], ["keyword", "Palabras exactas"], ["semantic", "Por significado"]] as const;
 type Mode = (typeof MODES)[number][0];
@@ -48,7 +49,7 @@ export default function Search() {
     onLoad={(c) => apply({ ...form, q: c.q ?? "", mode: (c.mode as Mode) ?? "hybrid" })} />;
 
   return (
-    <Page title="Buscar concursos">
+    <Page title={<span className="inline-flex items-center gap-2">Buscar concursos <HelpLink section="buscar" /></span>}>
       <WithFilters panel={panel} f={filters}>
       <form onSubmit={submit} role="search" className="flex flex-col gap-3">
         <div className="flex flex-wrap gap-2">

@@ -219,10 +219,10 @@ function HistoryCard() {
     <section className="flex flex-col gap-4">
       <div>
         <h2 className="h-section">Tu historial en Guatecompras</h2>
-        <p className="mt-1 text-[13px] text-stone-600">Resumen de todos los concursos 2026 en los que tus NIT ofertaron o resultaron adjudicados.</p>
+        <p className="mt-1 text-[13px] text-stone-600">Resumen de todos los concursos disponibles en los que tus NIT ofertaron o resultaron adjudicados.</p>
       </div>
       {h.isLoading ? <Loading rows={4} /> : h.error ? <ErrorBox error={h.error} /> : !h.data?.has_data || !h.data.totals ? (
-        <Empty>{h.data?.by_nit.length ? "No encontramos ofertas ni adjudicaciones de tus NIT en los datos de Guatecompras de 2026." : "Agrega un NIT para ver tu historial."}</Empty>
+        <Empty>{h.data?.by_nit.length ? "No encontramos ofertas ni adjudicaciones de tus NIT en los datos disponibles de Guatecompras." : "Agrega un NIT para ver tu historial."}</Empty>
       ) : <HistoryBody d={h.data} t={h.data.totals} />}
     </section>
   );

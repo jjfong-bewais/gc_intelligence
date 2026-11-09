@@ -7,6 +7,7 @@ import TenderCard from "../components/TenderCard";
 import { Empty, ErrorBox, Loading, Page } from "../components/ui";
 import { describe, fromSaved, SavedCombo } from "../filters";
 import { dateTime, num } from "../format";
+import { HelpLink } from "./Guide";
 
 const FREQ: Record<string, string> = { immediate: "Cada actualización", daily: "Diario", weekly: "Semanal" };
 
@@ -23,7 +24,7 @@ export default function Alerts() {
   });
   const items = q.data?.items ?? [];
   return (
-    <Page title="Alertas y combinaciones"
+    <Page title={<span className="inline-flex items-center gap-2">Alertas y combinaciones <HelpLink section="alertas" /></span>}
       subtitle="Tus combinaciones de filtros guardadas. Con el correo activo recibes de 1 a 10 concursos vigentes que cumplen la combinación y mejor coinciden contigo; un mismo concurso no se repite en 7 días. Créalas desde el panel de filtros de Buscar, Resumen, Para ti u Oportunidades."
       actions={<button className="btn" onClick={() => run.mutate()} disabled={run.isPending || !items.some((s) => s.active)}>{run.isPending ? "Enviando…" : "Enviar ahora"}</button>}>
       {msg && <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-[13px] text-green-800">{msg}</div>}

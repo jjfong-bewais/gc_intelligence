@@ -6,6 +6,7 @@ import { api, Tender } from "../api";
 import { IconArrowLeft, IconExternal } from "../components/icons";
 import TenderCard, { FAV_LABELS, FavButton, Feedback, StatusBadge } from "../components/TenderCard";
 import { ErrorBox, Loading, Segmented } from "../components/ui";
+import { HelpLink } from "./Guide";
 import { closeLabel, date, money, money2, nameCase, num, sentenceCase, stripHtml, supplierName } from "../format";
 
 export default function TenderDetail() {
@@ -59,7 +60,7 @@ export default function TenderDetail() {
         <p className="text-[13px] text-stone-600">Sigue este concurso para registrar si lo cotizaste, ganaste o perdiste, y agregar notas.</p>
       )}
 
-      <Block title="¿A qué precio se ha adjudicado esto antes?" aside="precio unitario de adjudicaciones parecidas">
+      <Block title={<span className="inline-flex items-center gap-2">¿A qué precio se ha adjudicado esto antes? <HelpLink section="detalle" label="Cómo leer los precios" /></span>} aside="precio unitario de adjudicaciones parecidas">
         {comp.isLoading ? <Loading rows={2} /> : comp.error ? <ErrorBox error={comp.error} /> : (
           <div className="flex flex-col gap-8">
             {comp.data.items.map((c: any) => <ItemComparables key={c.item.id} c={c} multi={comp.data.items.length > 1} />)}
@@ -248,7 +249,7 @@ const Fact = ({ k, v, sub }: { k: string; v: ReactNode; sub?: string }) => (
   </div>
 );
 
-const Block = ({ title, aside, children }: { title: string; aside?: string; children: ReactNode }) => (
+const Block = ({ title, aside, children }: { title: ReactNode; aside?: string; children: ReactNode }) => (
   <section className="card flex flex-col gap-5 p-6">
     <div className="flex flex-wrap items-baseline justify-between gap-2">
       <h2 className="h-section">{title}</h2>

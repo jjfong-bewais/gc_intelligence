@@ -218,3 +218,10 @@ def test_change_email(client):
     assert r.status_code == 200 and r.json()["email"] == "nuevo@empresa.gt"
     assert client.get("/api/v1/auth/me").json()["email"] == "nuevo@empresa.gt"
     client.put("/api/v1/auth/email", json={"email": me["email"], "password": "demo1234"})
+
+
+def test_data_coverage(client):
+    d = client.get("/api/v1/data-coverage").json()
+    assert d["tenders"] > 0 and 0 < d["open"] <= d["tenders"]
+    assert d["accepting"] <= d["open"]
+    assert d["first_published"] and d["last_published"] >= d["first_published"]

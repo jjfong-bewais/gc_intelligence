@@ -12,7 +12,7 @@ from ..models import ingest_file, saved_search, tender, tender_item, party
 from ..security import admin_user, current_user, read_link
 from ..services.alerts import run_all
 from ..services.embeddings import embed_pending
-from ..services.search import FACET_COLUMNS, NONE_VALUE, open_cond
+from ..services.search import FACET_COLUMNS, NONE_VALUE, accepting_cond, open_cond
 from ..services.text import normalize
 from .workspace import save_feedback
 
@@ -48,6 +48,28 @@ def facets(user=Depends(current_user), conn=Depends(get_conn)):
         out[key] = [{"value": v if v is not None else NONE_VALUE, "count": n} for v, n in rows]
     _FACETS_CACHE.update(t=time.time(), data=out)
     return out
+
+
+def _iso(v):
+    return v.isoformat() if hasattr(v, "isoformat") else v
+
+
+@router.get("/data-coverage")
+def data_coverage(user=Depends(current_user), conn=Depends(get_conn)):
+    """Qué datos hay disponibles: rango de publicación, última actualización y conteos (para la Guía)."""
+    first, last = conn.execute(sa.select(sa.func.min(tender.c.published_at), sa.func.max(tender.c.published_at))).one()
+    updated = conn.execute(sa.select(sa.func.max(ingest_file.c.processed_at))).scalar()
+    return {
+        "first_published": _iso(first),
+        "last_published": _iso(last),
+        "updated_at": _iso(updated),
+        "tenders": conn.execute(sa.select(sa.func.count()).select_from(tender)).scalar() or 0,
+        "open": conn.execute(sa.select(sa.func.count()).select_from(tender).where(open_cond())).scalar() or 0,
+        "accepting": conn.execute(sa.select(sa.func.count()).select_from(tender).where(accepting_cond())).scalar() or 0,
+        "awarded": conn.execute(sa.select(sa.func.count()).select_from(tender).where(tender.c.status == "complete")).scalar() or 0,
+        "buyers": conn.execute(sa.select(sa.func.count(sa.distinct(tender.c.buyer_name)))).scalar() or 0,
+        "demo": settings.gc_mode == "demo",
+    }
 
 
 @router.get("/catalogs/buyers")
