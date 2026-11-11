@@ -34,7 +34,7 @@ def _card(h: dict, user_id: int, ctx: str) -> str:
         f'<div style="color:#64748b;font-size:13px">NOG {h["nog"]} · {escape(h["buyer_name"][:80])}'
         f'{" · cierra " + dl if dl else ""}</div>'
         + (f'<div style="font-size:13px;margin-top:4px">{escape(h["reason"])}</div>' if h.get("reason") else "")
-        + f'<div style="margin-top:8px;font-size:13px"><a href="{settings.app_url}/tenders/{h["ocid"]}">Ver en la plataforma</a>'
+        + f'<div style="margin-top:8px;font-size:13px"><a href="{settings.app_url}/tenders/{h["ocid"]}?src=alert">Ver en la plataforma</a>'
         f' · <a href="{h["portal_url"]}">Guatecompras</a> · <a href="{fb(1)}">👍</a> <a href="{fb(-1)}">👎</a></div></div>'
     )
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sqlalchemy as sa
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
 from ..config import settings
@@ -9,6 +9,7 @@ from ..db import get_conn
 from ..models import app_user, org_supplier, organization
 from ..permissions import permission_names
 from ..security import COOKIE, current_user, hash_password, make_session, session_user, verify_password
+from ..services import usage
 from ..services.users import UserError, check_password, normalize_email
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -33,8 +34,10 @@ def _set_cookie(resp: Response, uid: int) -> None:
 
 
 @router.post("/login")
-def login(body: Login, resp: Response, conn=Depends(get_conn)):
+def login(body: Login, request: Request, resp: Response, conn=Depends(get_conn)):
     u = conn.execute(sa.select(app_user).where(app_user.c.email == body.email.strip().lower())).mappings().first()
+    if u:
+        usage.note(request, user_id=u["id"])  # también si falla la clave: sirve para ver intentos fallidos por usuario
     if not u or not verify_password(body.password, u["password_hash"]):
         raise HTTPException(401, "Correo o contraseña incorrectos")
     if not u["active"]:

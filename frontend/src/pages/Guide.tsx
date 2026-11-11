@@ -27,6 +27,7 @@ const TOC: [string, string][] = [
   ["historial", "Tu historial"],
   ["inventario", "Inventario"],
   ["filtros", "Referencia de filtros"],
+  ["privacidad", "Uso de la plataforma"],
   ["faq", "Preguntas frecuentes"],
 ];
 
@@ -291,6 +292,15 @@ function Screens() {
           <li>Lista de concursos (NOG) adjudicados, no adjudicados y en curso, con tu oferta o el monto adjudicado.</li>
         </Ul>
         <p>Puedes registrar varios NIT (por ejemplo, de distintas razones sociales). Sin guiones también funciona y pueden terminar en K. Si un NIT no tiene ofertas ni adjudicaciones en los datos disponibles, verás “Sin registros en Guatecompras”.</p>
+      </Sec>
+
+      <Sec id="privacidad" title="Uso de la plataforma y privacidad">
+        <p>Para mejorar la herramienta, los administradores de GC Intelligence ven métricas de uso de la plataforma. Registramos <B>qué pantallas visitas, cuánto tiempo estás activo, qué funciones usas y el texto de tus búsquedas</B>.</p>
+        <Ul>
+          <li>No registramos el contenido de tu inventario, tus notas ni tu contraseña.</li>
+          <li>Los registros se conservan <B>90 días</B> y se eliminan automáticamente.</li>
+          <li>Solo los administradores pueden consultarlos.</li>
+        </Ul>
       </Sec>
 
       <Sec id="inventario" title="Inventario">

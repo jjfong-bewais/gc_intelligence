@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import sqlalchemy as sa
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from ..db import get_conn
 from ..models import award, bid, contract, document, favorite, feedback, tender, tender_item
 from ..permissions import Perm, require
+from ..services import usage
 from ..services.comparables import price_comparables
 from ..services.search import Filters, hydrate, iso, search_tenders
 from ..services.vectors import vector_search
@@ -24,9 +25,12 @@ class SearchBody(BaseModel):
 
 
 @router.post("/search")
-def search(body: SearchBody, user=Depends(require(Perm.SEARCH)), conn=Depends(get_conn)):
+def search(body: SearchBody, request: Request, user=Depends(require(Perm.SEARCH)), conn=Depends(get_conn)):
     hits, total = search_tenders(conn, body.q, body.mode, Filters.from_dict(body.filters),
                                  min(body.limit, 100), body.offset, body.sort)
+    usage.note(request, q=body.q.strip()[:300], mode=body.mode, sort=body.sort, offset=body.offset, total=total,
+               filters={k: v for k, v in body.filters.items() if v not in (None, "", [], {}, False)},
+               used_embedding=bool(body.q.strip()) and body.mode in ("semantic", "hybrid"))
     return {"total": total, "items": hydrate(conn, hits, user["id"])}
 
 
@@ -38,8 +42,9 @@ def _by_nog(conn, nog: int) -> str:
 
 
 @router.get("/{nog}")
-def detail(nog: int, user=Depends(require(Perm.SEARCH)), conn=Depends(get_conn)):
+def detail(nog: int, request: Request, user=Depends(require(Perm.SEARCH)), conn=Depends(get_conn)):
     ocid = _by_nog(conn, nog)
+    usage.note(request, nog=nog)
     base = hydrate(conn, [{"ocid": ocid}], user["id"])[0]
     items = conn.execute(sa.select(tender_item).where(tender_item.c.ocid == ocid).order_by(tender_item.c.idx)).mappings().all()
     return {

@@ -260,3 +260,47 @@ ingest_file = sa.Table(
     sa.Column("n_changed", sa.Integer, default=0),
     _ts("processed_at", default=utcnow),
 )
+
+
+# ---------------------------------------------------------------- métricas de uso
+# Sesión = actividad de un usuario sin pausas de más de 30 min. Las columnas day/hour/dow ya están en hora
+# local (settings.metrics_tz_offset) para agrupar igual en SQLite y Postgres.
+usage_session = sa.Table(
+    "usage_session", metadata,
+    sa.Column("id", sa.Integer, primary_key=True),
+    sa.Column("user_id", sa.Integer, nullable=False),
+    _ts("started_at", nullable=False),
+    _ts("last_seen_at", nullable=False),
+    sa.Column("day", sa.String(10), nullable=False),  # AAAA-MM-DD local del inicio
+    sa.Column("dow", sa.Integer, nullable=False),  # 0 = lunes
+    sa.Column("hour", sa.Integer, nullable=False),
+    sa.Column("active_seconds", sa.Integer, nullable=False, default=0),  # tiempo con la pestaña visible y activa
+    sa.Column("n_events", sa.Integer, nullable=False, default=0),
+    sa.Column("n_pages", sa.Integer, nullable=False, default=0),
+    sa.Column("entry_source", sa.String(20), nullable=False, default="direct"),  # direct | alert
+    sa.Column("device", sa.String(12), nullable=False, default=""),  # desktop | mobile
+    sa.Index("ix_usage_session_user", "user_id", "started_at"),
+    sa.Index("ix_usage_session_day", "day"),
+)
+
+usage_event = sa.Table(
+    "usage_event", metadata,
+    sa.Column("id", sa.Integer, primary_key=True),
+    _ts("ts", nullable=False),
+    sa.Column("day", sa.String(10), nullable=False),
+    sa.Column("hour", sa.Integer, nullable=False),
+    sa.Column("dow", sa.Integer, nullable=False),
+    sa.Column("user_id", sa.Integer),
+    sa.Column("session_id", sa.Integer),  # nulo en eventos sin sesión (clics desde el correo)
+    sa.Column("kind", sa.String(12), nullable=False),  # api | page | action
+    sa.Column("feature", sa.String(40), nullable=False, default=""),
+    sa.Column("action", sa.String(40), nullable=False, default=""),
+    sa.Column("route", sa.String(120), nullable=False, default=""),
+    sa.Column("status", sa.Integer),
+    sa.Column("duration_ms", sa.Integer),
+    sa.Column("props", sa.JSON),
+    sa.Index("ix_usage_event_user", "user_id", "ts"),
+    sa.Index("ix_usage_event_feature", "feature", "ts"),
+    sa.Index("ix_usage_event_day", "day"),
+    sa.Index("ix_usage_event_session", "session_id"),
+)

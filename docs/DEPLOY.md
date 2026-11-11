@@ -29,6 +29,8 @@ Después entra a **Usuarios** (menú, solo administradores) y usa *Nuevo usuario
 fly ssh console -C "python -m app.cli set-role cliente@empresa.com member"
 ```
 
+**Métricas de uso:** las tablas `usage_session` y `usage_event` se crean solas al arrancar. No hay datos históricos: empiezan a llenarse desde el primer despliegue. Los eventos de más de 90 días se borran en el workflow diario (`prune-usage`); también puedes correrlo a mano con `fly ssh console -C "python -m app.cli prune-usage"`.
+
 ## 3. Web — Cloudflare Pages
 Proyecto conectado al repo: root `frontend`, build `npm run build`, salida `dist`, variable `VITE_API_URL=https://api.tudominio.com`. Dominio `app.tudominio.com`. `public/_redirects` ya incluye el fallback SPA.
 

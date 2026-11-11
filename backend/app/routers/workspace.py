@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 
 import sqlalchemy as sa
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 
 from ..config import settings
@@ -12,6 +12,7 @@ from ..models import (alert_delivery, alert_sent, favorite, feedback, inventory_
 from ..services.history import org_history
 from ..permissions import Perm, require
 from ..security import current_user
+from ..services import usage
 from ..services.alerts import REPEAT_WINDOW, pick_for_saved, run_saved_searches
 from ..services.inventory import import_inventory, parse_csv
 from ..services.recommend import build_profile, inventory_matches
@@ -138,11 +139,12 @@ def list_favs(user=Depends(require(Perm.FAVORITES)), conn=Depends(get_conn)):
 
 
 @router.put("/favorites/{ocid}")
-def put_fav(ocid: str, body: FavBody, user=Depends(require(Perm.FAVORITES)), conn=Depends(get_conn)):
+def put_fav(ocid: str, body: FavBody, request: Request, user=Depends(require(Perm.FAVORITES)), conn=Depends(get_conn)):
     _need_tender(conn, ocid)
     if body.status not in FAV_STATUS:
         raise HTTPException(400, "Estado inválido")
     cur = conn.execute(sa.select(favorite.c.ocid).where(favorite.c.user_id == user["id"], favorite.c.ocid == ocid)).first()
+    usage.note(request, ocid=ocid, status=body.status, action="update" if cur else "save")
     if cur:
         conn.execute(sa.update(favorite).where(favorite.c.user_id == user["id"], favorite.c.ocid == ocid)
                      .values(status=body.status, note=body.note))
@@ -178,8 +180,9 @@ def save_feedback(conn, user_id: int, ocid: str, signal: int, reason: str = "", 
 
 
 @router.put("/feedback/{ocid}")
-def put_feedback(ocid: str, body: FbBody, user=Depends(require(Perm.FAVORITES)), conn=Depends(get_conn)):
+def put_feedback(ocid: str, body: FbBody, request: Request, user=Depends(require(Perm.FAVORITES)), conn=Depends(get_conn)):
     _need_tender(conn, ocid)
+    usage.note(request, ocid=ocid, signal=body.signal, context=body.context[:40])
     save_feedback(conn, user["id"], ocid, body.signal, body.reason, body.context)
     return {"ok": True}
 
@@ -224,8 +227,9 @@ def list_saved(user=Depends(require(Perm.ALERTS)), conn=Depends(get_conn)):
 
 
 @router.post("/saved-searches")
-def create_saved(body: SavedBody, user=Depends(require(Perm.ALERTS)), conn=Depends(get_conn)):
+def create_saved(body: SavedBody, request: Request, user=Depends(require(Perm.ALERTS)), conn=Depends(get_conn)):
     _check(body)
+    usage.note(request, q=body.q[:300], mode=body.mode, frequency=body.frequency)
     sid = conn.execute(sa.insert(saved_search).values(
         user_id=user["id"], name=body.name.strip(), q=body.q, mode=body.mode, filters=body.filters,
         frequency=body.frequency, active=body.active, max_items=body.max_items, last_run_at=None, created_at=utcnow(),
@@ -281,7 +285,7 @@ def list_inventory(user=Depends(require(Perm.INVENTORY)), conn=Depends(get_conn)
 
 
 @router.post("/inventory/import")
-async def import_inv(file: UploadFile, replace: bool = True, user=Depends(require(Perm.INVENTORY)), conn=Depends(get_conn)):
+async def import_inv(file: UploadFile, request: Request, replace: bool = True, user=Depends(require(Perm.INVENTORY)), conn=Depends(get_conn)):
     raw = await file.read()
     if len(raw) > 5_000_000:
         raise HTTPException(413, "Archivo demasiado grande (máx. 5 MB)")
@@ -289,7 +293,9 @@ async def import_inv(file: UploadFile, replace: bool = True, user=Depends(requir
         rows = parse_csv(raw.decode("utf-8-sig", errors="replace"))
     except ValueError as e:
         raise HTTPException(400, str(e))
-    return {"imported": import_inventory(conn, user["org_id"], rows, replace)}
+    n = import_inventory(conn, user["org_id"], rows, replace)
+    usage.note(request, rows=n if isinstance(n, int) else len(rows))
+    return {"imported": n}
 
 
 @router.delete("/inventory")

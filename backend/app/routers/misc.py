@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 
 import sqlalchemy as sa
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 
 from ..config import settings
@@ -11,6 +11,7 @@ from ..db import get_conn
 from ..models import ingest_file, saved_search, tender, tender_item, party
 from ..permissions import Perm, require
 from ..security import current_user, read_link
+from ..services import usage
 from ..services.alerts import run_all
 from ..services.embeddings import embed_pending
 from ..services.search import FACET_COLUMNS, NONE_VALUE, accepting_cond, open_cond
@@ -110,10 +111,11 @@ def _page(msg: str) -> HTMLResponse:
 
 
 @router.get("/links/{kind}", include_in_schema=False)
-def link(kind: str, t: str, conn=Depends(get_conn)):
+def link(kind: str, t: str, request: Request, conn=Depends(get_conn)):
     p = read_link(t)
     if not p or p.get("k") != kind:
         return _page("Enlace inválido o vencido")
+    usage.note(request, user_id=p.get("u"), action=f"email_{kind}", signal=p.get("s"), context=p.get("c"))
     if kind == "feedback":
         save_feedback(conn, int(p["u"]), p["o"], int(p["s"]), context=p.get("c", "email"))
         return _page("¡Gracias! Registramos tu opinión." if int(p["s"]) > 0 else "Anotado: te mostraremos menos como este.")

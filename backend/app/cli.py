@@ -32,6 +32,8 @@ def main(argv: list[str] | None = None) -> int:
     e.add_argument("--limit", type=int)
     a = sub.add_parser("alerts", help="envía alertas pendientes")
     a.add_argument("--force", action="store_true")
+    pu = sub.add_parser("prune-usage", help="borra eventos de uso más viejos que USAGE_RETENTION_DAYS (90)")
+    pu.add_argument("--days", type=int)
     a = ap.parse_args(argv)
 
     from .db import engine
@@ -70,6 +72,10 @@ def main(argv: list[str] | None = None) -> int:
         from .services.embeddings import embed_pending
         with engine.begin() as c:
             print(embed_pending(c, a.limit))
+    elif a.cmd == "prune-usage":
+        from .services.usage import prune
+        with engine.begin() as c:
+            print(prune(c, a.days))
     elif a.cmd == "alerts":
         from .services.alerts import run_all
         with engine.begin() as c:

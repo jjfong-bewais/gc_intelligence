@@ -12,8 +12,9 @@ from fastapi.staticfiles import StaticFiles
 
 from . import __version__
 from .config import settings
-from .routers import auth, insights, misc, suppliers, tenders, users, workspace
+from .routers import auth, insights, metrics, misc, suppliers, tenders, users, workspace
 from .schema import init_db
+from .services import usage
 from .services.users import UserError
 
 log = logging.getLogger("uvicorn.error")  # sale en los logs de Fly
@@ -32,10 +33,13 @@ async def lifespan(app: FastAPI):
     # En un hilo aparte: uvicorn no abre el puerto hasta que termina el arranque, y si la base
     # tarda (Neon despertando, candados de la ingesta) Fly da la máquina por caída.
     threading.Thread(target=_init_db_background, name="init-db", daemon=True).start()
+    usage.ensure_started()
     yield
+    usage.stop()  # vacía la cola de métricas antes de apagar
 
 
 app = FastAPI(title="GC Intelligence", version=__version__, lifespan=lifespan)
+app.add_middleware(usage.UsageMiddleware)
 if settings.cors_list:
     app.add_middleware(CORSMiddleware, allow_origins=settings.cors_list, allow_credentials=True,
                        allow_methods=["*"], allow_headers=["*"])
@@ -48,7 +52,7 @@ async def _user_error(_: Request, e: UserError):
 
 
 api = APIRouter(prefix="/api/v1")
-for r in (auth.router, users.router, tenders.router, suppliers.router, insights.router, workspace.router, misc.router):
+for r in (auth.router, users.router, tenders.router, suppliers.router, insights.router, workspace.router, misc.router, metrics.router):
     api.include_router(r)
 app.include_router(api)
 

@@ -4,6 +4,7 @@ import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "reac
 import { api } from "./api";
 import { Perm, RequirePerm } from "./auth";
 import { IconLogout, IconSearch } from "./components/icons";
+import { useTelemetry } from "./telemetry";
 import Alerts from "./pages/Alerts";
 import ChangePassword from "./pages/ChangePassword";
 import Dashboard from "./pages/Dashboard";
@@ -11,6 +12,7 @@ import Favorites from "./pages/Favorites";
 import Guide from "./pages/Guide";
 import Inventory from "./pages/Inventory";
 import Login from "./pages/Login";
+import Metrics from "./pages/Metrics";
 import Opportunities from "./pages/Opportunities";
 import Recommendations from "./pages/Recommendations";
 import Search from "./pages/Search";
@@ -26,7 +28,7 @@ const GROUPS: { title: string; items: NavItem[] }[] = [
   { title: "Mi trabajo", items: [["/favorites", "Seguimiento", "favorites"], ["/inventory", "Inventario", "inventory"], ["/alerts", "Alertas", "alerts"]] },
   { title: "Mercado", items: [["/suppliers", "Proveedores", "suppliers"]] },
   { title: "Ayuda", items: [["/guide", "Guía"]] },
-  { title: "Administración", items: [["/users", "Usuarios", "admin"]] },
+  { title: "Administración", items: [["/users", "Usuarios", "admin"], ["/metrics", "Métricas de uso", "admin"]] },
 ];
 
 const linkCls = ({ isActive }: { isActive: boolean }) =>
@@ -44,6 +46,7 @@ export default function App() {
   const nav = useNavigate();
   const loc = useLocation();
   const me = useQuery({ queryKey: ["me"], queryFn: () => api("/auth/me"), retry: false });
+  useTelemetry(!!me.data && !me.data.must_change_password);  // pantallas vistas y tiempo activo (panel de métricas)
   const perms: string[] = me.data?.permissions ?? [];
   const groups = GROUPS.map((g) => ({ ...g, items: g.items.filter(([, , perm]) => !perm || perms.includes(perm)) })).filter((g) => g.items.length);
 
@@ -126,6 +129,7 @@ export default function App() {
             <Route path="/suppliers/:sid" element={<RequirePerm perm="suppliers"><Suppliers /></RequirePerm>} />
             <Route path="/guide" element={<Guide />} />
             <Route path="/users" element={<RequirePerm perm="admin"><Users /></RequirePerm>} />
+            <Route path="/metrics" element={<RequirePerm perm="admin"><Metrics /></RequirePerm>} />
             <Route path="/settings" element={<Settings user={u} />} />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>

@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     data_from: str = "2024-01"  # primer mes a cargar (AAAA-MM)
     guatecompras_base: str = "https://ocds.guatecompras.gt"
 
+    # Métricas de uso (panel de administración)
+    metrics_tz_offset: int = -6  # horas respecto a UTC para agrupar por día/hora (Guatemala no tiene horario de verano)
+    usage_retention_days: int = 90  # los eventos de uso más viejos se eliminan (comando prune-usage)
+
     # Frontend compilado servido por la API (útil en la demo local)
     frontend_dist: str = str(REPO_ROOT / "frontend" / "dist")
 
