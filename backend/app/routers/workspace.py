@@ -10,6 +10,7 @@ from ..config import settings
 from ..db import get_conn, utcnow
 from ..models import (alert_delivery, alert_sent, favorite, feedback, inventory_item, org_supplier, party, saved_search, tender)
 from ..services.history import org_history
+from ..permissions import Perm, require
 from ..security import current_user
 from ..services.alerts import REPEAT_WINDOW, pick_for_saved, run_saved_searches
 from ..services.inventory import import_inventory, parse_csv
@@ -127,7 +128,7 @@ class FavBody(BaseModel):
 
 
 @router.get("/favorites")
-def list_favs(user=Depends(current_user), conn=Depends(get_conn)):
+def list_favs(user=Depends(require(Perm.FAVORITES)), conn=Depends(get_conn)):
     rows = conn.execute(sa.select(favorite).where(favorite.c.user_id == user["id"]).order_by(favorite.c.created_at.desc())).mappings().all()
     items = hydrate(conn, [{"ocid": r["ocid"]} for r in rows], user["id"])
     notes = {r["ocid"]: r for r in rows}
@@ -137,7 +138,7 @@ def list_favs(user=Depends(current_user), conn=Depends(get_conn)):
 
 
 @router.put("/favorites/{ocid}")
-def put_fav(ocid: str, body: FavBody, user=Depends(current_user), conn=Depends(get_conn)):
+def put_fav(ocid: str, body: FavBody, user=Depends(require(Perm.FAVORITES)), conn=Depends(get_conn)):
     _need_tender(conn, ocid)
     if body.status not in FAV_STATUS:
         raise HTTPException(400, "Estado inválido")
@@ -151,7 +152,7 @@ def put_fav(ocid: str, body: FavBody, user=Depends(current_user), conn=Depends(g
 
 
 @router.delete("/favorites/{ocid}")
-def del_fav(ocid: str, user=Depends(current_user), conn=Depends(get_conn)):
+def del_fav(ocid: str, user=Depends(require(Perm.FAVORITES)), conn=Depends(get_conn)):
     conn.execute(sa.delete(favorite).where(favorite.c.user_id == user["id"], favorite.c.ocid == ocid))
     return {"ok": True}
 
@@ -177,7 +178,7 @@ def save_feedback(conn, user_id: int, ocid: str, signal: int, reason: str = "", 
 
 
 @router.put("/feedback/{ocid}")
-def put_feedback(ocid: str, body: FbBody, user=Depends(current_user), conn=Depends(get_conn)):
+def put_feedback(ocid: str, body: FbBody, user=Depends(require(Perm.FAVORITES)), conn=Depends(get_conn)):
     _need_tender(conn, ocid)
     save_feedback(conn, user["id"], ocid, body.signal, body.reason, body.context)
     return {"ok": True}
@@ -217,13 +218,13 @@ def _check(b: SavedBody) -> None:
 
 
 @router.get("/saved-searches")
-def list_saved(user=Depends(current_user), conn=Depends(get_conn)):
+def list_saved(user=Depends(require(Perm.ALERTS)), conn=Depends(get_conn)):
     rows = conn.execute(sa.select(saved_search).where(saved_search.c.user_id == user["id"]).order_by(saved_search.c.id)).mappings().all()
     return {"items": [_ser(dict(r)) for r in rows]}
 
 
 @router.post("/saved-searches")
-def create_saved(body: SavedBody, user=Depends(current_user), conn=Depends(get_conn)):
+def create_saved(body: SavedBody, user=Depends(require(Perm.ALERTS)), conn=Depends(get_conn)):
     _check(body)
     sid = conn.execute(sa.insert(saved_search).values(
         user_id=user["id"], name=body.name.strip(), q=body.q, mode=body.mode, filters=body.filters,
@@ -233,7 +234,7 @@ def create_saved(body: SavedBody, user=Depends(current_user), conn=Depends(get_c
 
 
 @router.put("/saved-searches/{sid}")
-def update_saved(sid: int, body: SavedBody, user=Depends(current_user), conn=Depends(get_conn)):
+def update_saved(sid: int, body: SavedBody, user=Depends(require(Perm.ALERTS)), conn=Depends(get_conn)):
     _own(conn, sid, user)
     _check(body)
     conn.execute(sa.update(saved_search).where(saved_search.c.id == sid).values(
@@ -243,7 +244,7 @@ def update_saved(sid: int, body: SavedBody, user=Depends(current_user), conn=Dep
 
 
 @router.delete("/saved-searches/{sid}")
-def delete_saved(sid: int, user=Depends(current_user), conn=Depends(get_conn)):
+def delete_saved(sid: int, user=Depends(require(Perm.ALERTS)), conn=Depends(get_conn)):
     _own(conn, sid, user)
     conn.execute(sa.delete(alert_delivery).where(alert_delivery.c.saved_search_id == sid))
     conn.execute(sa.delete(saved_search).where(saved_search.c.id == sid))
@@ -251,7 +252,7 @@ def delete_saved(sid: int, user=Depends(current_user), conn=Depends(get_conn)):
 
 
 @router.get("/saved-searches/{sid}/preview")
-def preview_saved(sid: int, user=Depends(current_user), conn=Depends(get_conn)):
+def preview_saved(sid: int, user=Depends(require(Perm.ALERTS)), conn=Depends(get_conn)):
     """Cuántos concursos vigentes cumplen la combinación y cuáles irían en el próximo correo."""
     s = _own(conn, sid, user)
     now = utcnow()
@@ -272,7 +273,7 @@ def preview_saved(sid: int, user=Depends(current_user), conn=Depends(get_conn)):
 
 # ---- inventario
 @router.get("/inventory")
-def list_inventory(user=Depends(current_user), conn=Depends(get_conn)):
+def list_inventory(user=Depends(require(Perm.INVENTORY)), conn=Depends(get_conn)):
     rows = conn.execute(sa.select(inventory_item.c.id, inventory_item.c.sku, inventory_item.c.description,
                                   inventory_item.c.unit, inventory_item.c.unspsc)
                         .where(inventory_item.c.org_id == user["org_id"]).order_by(inventory_item.c.id).limit(1000)).mappings().all()
@@ -280,7 +281,7 @@ def list_inventory(user=Depends(current_user), conn=Depends(get_conn)):
 
 
 @router.post("/inventory/import")
-async def import_inv(file: UploadFile, replace: bool = True, user=Depends(current_user), conn=Depends(get_conn)):
+async def import_inv(file: UploadFile, replace: bool = True, user=Depends(require(Perm.INVENTORY)), conn=Depends(get_conn)):
     raw = await file.read()
     if len(raw) > 5_000_000:
         raise HTTPException(413, "Archivo demasiado grande (máx. 5 MB)")
@@ -292,13 +293,13 @@ async def import_inv(file: UploadFile, replace: bool = True, user=Depends(curren
 
 
 @router.delete("/inventory")
-def clear_inventory(user=Depends(current_user), conn=Depends(get_conn)):
+def clear_inventory(user=Depends(require(Perm.INVENTORY)), conn=Depends(get_conn)):
     conn.execute(sa.delete(inventory_item).where(inventory_item.c.org_id == user["org_id"]))
     return {"ok": True}
 
 
 @router.get("/inventory/matches")
-def inv_matches(limit: int = 40, user=Depends(current_user), conn=Depends(get_conn)):
+def inv_matches(limit: int = 40, user=Depends(require(Perm.INVENTORY)), conn=Depends(get_conn)):
     found = inventory_matches(conn, user["org_id"], settings.match_threshold, limit=limit)
     items = hydrate(conn, found, user["id"])
     by = {f["ocid"]: f for f in found}
@@ -308,5 +309,5 @@ def inv_matches(limit: int = 40, user=Depends(current_user), conn=Depends(get_co
 
 
 @router.post("/alerts/run")
-def run_my_alerts(user=Depends(current_user), conn=Depends(get_conn)):
+def run_my_alerts(user=Depends(require(Perm.ALERTS)), conn=Depends(get_conn)):
     return run_saved_searches(conn, force=True, user_id=user["id"])

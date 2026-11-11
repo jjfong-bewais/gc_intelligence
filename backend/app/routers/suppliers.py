@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from ..db import get_conn
 from ..models import award, bid, party, tender
-from ..security import current_user
+from ..permissions import Perm, require
 from ..services.opportunities import find_peers
 from ..services.recommend import build_profile, recommend_open
 from ..services.search import hydrate
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/suppliers", tags=["suppliers"])
 
 
 @router.get("")
-def search(q: str = "", limit: int = 20, user=Depends(current_user), conn=Depends(get_conn)):
+def search(q: str = "", limit: int = 20, user=Depends(require(Perm.SUPPLIERS)), conn=Depends(get_conn)):
     stmt = sa.select(party.c.id, party.c.name).where(party.c.kind == "supplier")
     if q.strip():
         n = normalize(q)
@@ -32,7 +32,7 @@ def _exists(conn, sid: str) -> dict:
 
 
 @router.get("/{sid}")
-def profile(sid: str, user=Depends(current_user), conn=Depends(get_conn)):
+def profile(sid: str, user=Depends(require(Perm.SUPPLIERS)), conn=Depends(get_conn)):
     p = _exists(conn, sid)
     won = conn.execute(sa.select(sa.func.count(sa.distinct(award.c.ocid)), sa.func.coalesce(sa.func.sum(award.c.amount), 0))
                        .where(award.c.supplier_id == sid)).one()
@@ -52,7 +52,7 @@ def profile(sid: str, user=Depends(current_user), conn=Depends(get_conn)):
 
 
 @router.get("/{sid}/tenders")
-def tenders(sid: str, role: str = "awarded", limit: int = 30, user=Depends(current_user), conn=Depends(get_conn)):
+def tenders(sid: str, role: str = "awarded", limit: int = 30, user=Depends(require(Perm.SUPPLIERS)), conn=Depends(get_conn)):
     _exists(conn, sid)
     t = award if role == "awarded" else bid
     ocids = conn.execute(sa.select(t.c.ocid).where(t.c.supplier_id == sid).distinct()).scalars().all()
@@ -61,7 +61,7 @@ def tenders(sid: str, role: str = "awarded", limit: int = 30, user=Depends(curre
 
 
 @router.get("/{sid}/matching-tenders")
-def matching(sid: str, limit: int = 30, user=Depends(current_user), conn=Depends(get_conn)):
+def matching(sid: str, limit: int = 30, user=Depends(require(Perm.SUPPLIERS)), conn=Depends(get_conn)):
     _exists(conn, sid)
     prof = build_profile(conn, [sid], user["id"])
     recs = recommend_open(conn, prof, k=limit)
@@ -69,6 +69,6 @@ def matching(sid: str, limit: int = 30, user=Depends(current_user), conn=Depends
 
 
 @router.get("/{sid}/peers")
-def peers(sid: str, user=Depends(current_user), conn=Depends(get_conn)):
+def peers(sid: str, user=Depends(require(Perm.SUPPLIERS)), conn=Depends(get_conn)):
     _exists(conn, sid)
     return {"items": find_peers(conn, [sid])}

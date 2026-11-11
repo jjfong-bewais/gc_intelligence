@@ -36,7 +36,9 @@ frontend/       React + TS + Tailwind + TanStack Query + Recharts
 .github/workflows/  ci, ingest (cron diario), deploy-api
 ```
 
-CLI: `cd backend && ../.venv/bin/python -m app.cli --help` (init-db, create-user, ingest, embed, alerts, demo).
+CLI: `cd backend && ../.venv/bin/python -m app.cli --help` (init-db, create-user, set-role, ingest, embed, alerts, demo).
+
+Roles: `member` (toda la plataforma) y `admin` (además crea, edita, desactiva y elimina usuarios y ve las operaciones globales). Los permisos viven en `backend/app/permissions.py`: los endpoints piden `require(Perm.X)`, así que dar o quitar funciones por usuario no requiere tocar código (`perm_overrides`).
 
 ## Notas
 

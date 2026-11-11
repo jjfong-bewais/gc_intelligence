@@ -5,15 +5,16 @@ import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
 from .config import settings
-from .routers import auth, insights, misc, suppliers, tenders, workspace
+from .routers import auth, insights, misc, suppliers, tenders, users, workspace
 from .schema import init_db
+from .services.users import UserError
 
 log = logging.getLogger("uvicorn.error")  # sale en los logs de Fly
 
@@ -39,8 +40,15 @@ if settings.cors_list:
     app.add_middleware(CORSMiddleware, allow_origins=settings.cors_list, allow_credentials=True,
                        allow_methods=["*"], allow_headers=["*"])
 
+
+
+@app.exception_handler(UserError)
+async def _user_error(_: Request, e: UserError):
+    return JSONResponse({"detail": str(e)}, status_code=e.status)
+
+
 api = APIRouter(prefix="/api/v1")
-for r in (auth.router, tenders.router, suppliers.router, insights.router, workspace.router, misc.router):
+for r in (auth.router, users.router, tenders.router, suppliers.router, insights.router, workspace.router, misc.router):
     api.include_router(r)
 app.include_router(api)
 

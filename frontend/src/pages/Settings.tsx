@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { api } from "../api";
 import { IconX } from "../components/icons";
 import { Empty, ErrorBox, Kpi, KpiStrip, Loading, Page, Segmented } from "../components/ui";
+import { PasswordForm } from "./ChangePassword";
 import { date, money, nameCase, num, sentenceCase, supplierName } from "../format";
 
 type Nit = { id: string; nit: string; label: string; name: string | null; found: boolean };
@@ -12,6 +13,7 @@ export default function Settings({ user }: { user: any }) {
   return (
     <Page title="Ajustes" subtitle={user.org_name}>
       <AccountCard user={user} />
+      <PasswordCard />
       <NitsCard />
       <HistoryCard />
     </Page>
@@ -63,6 +65,27 @@ function AccountCard({ user }: { user: any }) {
           </div>
         </form>
       )}
+    </section>
+  );
+}
+
+/* ── Contraseña ──────────────────────────────────────────────────────────── */
+
+function PasswordCard() {
+  const [open, setOpen] = useState(false);
+  const [ok, setOk] = useState(false);
+  return (
+    <section className="card flex flex-col gap-4 p-6">
+      <div>
+        <h2 className="h-section">Contraseña</h2>
+        <p className="mt-1 text-[13px] text-stone-600">Cámbiala cuando quieras; necesitas escribir la actual.</p>
+      </div>
+      {!open ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <button type="button" className="action-pill" onClick={() => { setOpen(true); setOk(false); }}>Cambiar contraseña</button>
+          {ok && <span className="text-[13px] text-green-700">Contraseña actualizada</span>}
+        </div>
+      ) : <PasswordForm onDone={() => { setOpen(false); setOk(true); }} />}
     </section>
   );
 }

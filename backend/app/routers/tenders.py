@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from ..db import get_conn
 from ..models import award, bid, contract, document, favorite, feedback, tender, tender_item
-from ..security import current_user
+from ..permissions import Perm, require
 from ..services.comparables import price_comparables
 from ..services.search import Filters, hydrate, iso, search_tenders
 from ..services.vectors import vector_search
@@ -24,7 +24,7 @@ class SearchBody(BaseModel):
 
 
 @router.post("/search")
-def search(body: SearchBody, user=Depends(current_user), conn=Depends(get_conn)):
+def search(body: SearchBody, user=Depends(require(Perm.SEARCH)), conn=Depends(get_conn)):
     hits, total = search_tenders(conn, body.q, body.mode, Filters.from_dict(body.filters),
                                  min(body.limit, 100), body.offset, body.sort)
     return {"total": total, "items": hydrate(conn, hits, user["id"])}
@@ -38,7 +38,7 @@ def _by_nog(conn, nog: int) -> str:
 
 
 @router.get("/{nog}")
-def detail(nog: int, user=Depends(current_user), conn=Depends(get_conn)):
+def detail(nog: int, user=Depends(require(Perm.SEARCH)), conn=Depends(get_conn)):
     ocid = _by_nog(conn, nog)
     base = hydrate(conn, [{"ocid": ocid}], user["id"])[0]
     items = conn.execute(sa.select(tender_item).where(tender_item.c.ocid == ocid).order_by(tender_item.c.idx)).mappings().all()
@@ -56,7 +56,7 @@ def detail(nog: int, user=Depends(current_user), conn=Depends(get_conn)):
 
 
 @router.get("/{nog}/similar")
-def similar(nog: int, status: str = Query("awarded"), limit: int = 12, user=Depends(current_user), conn=Depends(get_conn)):
+def similar(nog: int, status: str = Query("awarded"), limit: int = 12, user=Depends(require(Perm.SEARCH)), conn=Depends(get_conn)):
     ocid = _by_nog(conn, nog)
     vec = conn.execute(sa.select(tender.c.embedding).where(tender.c.ocid == ocid)).scalar()
     if vec is None:
@@ -69,5 +69,5 @@ def similar(nog: int, status: str = Query("awarded"), limit: int = 12, user=Depe
 
 
 @router.get("/{nog}/price-comparables")
-def comparables(nog: int, user=Depends(current_user), conn=Depends(get_conn)):
+def comparables(nog: int, user=Depends(require(Perm.SEARCH)), conn=Depends(get_conn)):
     return price_comparables(conn, _by_nog(conn, nog))

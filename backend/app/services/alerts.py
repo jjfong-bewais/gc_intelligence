@@ -101,7 +101,7 @@ def run_saved_searches(conn: sa.Connection, force: bool = False, user_id: int | 
     now = utcnow()
     sent = mails = 0
     stmt = (sa.select(saved_search, app_user.c.email, app_user.c.org_id).join(app_user, app_user.c.id == saved_search.c.user_id)
-            .where(saved_search.c.active.is_(True)).order_by(saved_search.c.user_id, saved_search.c.id))
+            .where(saved_search.c.active.is_(True), app_user.c.active.is_(True)).order_by(saved_search.c.user_id, saved_search.c.id))
     if user_id is not None:
         stmt = stmt.where(saved_search.c.user_id == user_id)
     rows = conn.execute(stmt).mappings().all()
@@ -140,13 +140,13 @@ def run_saved_searches(conn: sa.Connection, force: bool = False, user_id: int | 
 def run_inventory_alerts(conn: sa.Connection) -> dict:
     now = utcnow()
     mails = n = 0
-    orgs = conn.execute(sa.select(app_user.c.org_id).distinct()).scalars().all()
+    orgs = conn.execute(sa.select(app_user.c.org_id).where(app_user.c.active.is_(True)).distinct()).scalars().all()
     for org in orgs:
         done = {r[0] for r in conn.execute(sa.select(inventory_alert.c.ocid).where(inventory_alert.c.org_id == org))}
         found = inventory_matches(conn, org, settings.match_threshold, since=now - timedelta(days=3), exclude=done)
         if not found:
             continue
-        users = conn.execute(sa.select(app_user.c.id, app_user.c.email).where(app_user.c.org_id == org)).all()
+        users = conn.execute(sa.select(app_user.c.id, app_user.c.email).where(app_user.c.org_id == org, app_user.c.active.is_(True))).all()
         meta = {h["ocid"]: h for h in hydrate(conn, found[:MAX_PER_MAIL])}
         for uid, email in users:
             cards = []

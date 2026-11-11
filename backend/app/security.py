@@ -62,16 +62,18 @@ def read_link(token: str) -> dict | None:
         return None
 
 
-def current_user(request: Request, conn: sa.Connection = Depends(get_conn)) -> dict:
+def session_user(request: Request, conn: sa.Connection = Depends(get_conn)) -> dict:
+    """Usuario de la sesión, aunque deba cambiar su clave (solo para /auth/me, /auth/password…)."""
     token = request.cookies.get(COOKIE)
     uid = read_session(token) if token else None
     row = conn.execute(sa.select(app_user).where(app_user.c.id == uid)).mappings().first() if uid else None
-    if not row:
+    if not row or not row["active"]:
         raise HTTPException(status_code=401, detail="No autenticado")
     return dict(row)
 
 
-def admin_user(user: dict = Depends(current_user)) -> dict:
-    if user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="Solo administradores")
+def current_user(user: dict = Depends(session_user)) -> dict:
+    """Usuario autenticado y al día con su clave: lo que usan todos los demás endpoints."""
+    if user["must_change_password"]:
+        raise HTTPException(status_code=403, detail="Debes cambiar tu contraseña antes de continuar")
     return user

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Query
 
 from ..db import get_conn, utcnow
 from ..models import award, favorite, inventory_item, org_supplier, tender
+from ..permissions import Perm, require
 from ..security import current_user
 from ..services.opportunities import opportunities
 from ..services.recommend import build_profile, inventory_matches, recommend_open
@@ -25,7 +26,7 @@ FILTERS_HELP = "Filtros duros en JSON (mismo formato que /tenders/search)"
 
 @router.get("/recommendations")
 def recommendations(limit: int = 30, f: str = Query("", description=FILTERS_HELP),
-                    user=Depends(current_user), conn=Depends(get_conn)):
+                    user=Depends(require(Perm.RECOMMENDATIONS)), conn=Depends(get_conn)):
     """Siempre concursos vigentes; los filtros los acotan o excluyen."""
     conds = build_conds(parse_filters_param(f))
     prof = build_profile(conn, _sids(conn, user), user["id"])
@@ -35,7 +36,7 @@ def recommendations(limit: int = 30, f: str = Query("", description=FILTERS_HELP
 
 
 @router.get("/opportunities")
-def opps(f: str = Query("", description=FILTERS_HELP), user=Depends(current_user), conn=Depends(get_conn)):
+def opps(f: str = Query("", description=FILTERS_HELP), user=Depends(require(Perm.OPPORTUNITIES)), conn=Depends(get_conn)):
     flt = parse_filters_param(f)
     return opportunities(conn, _sids(conn, user), conds=build_conds(flt) or None, key=flt.key())
 

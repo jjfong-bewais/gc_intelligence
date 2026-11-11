@@ -40,7 +40,10 @@ app_user = sa.Table(
     sa.Column("email", sa.String(200), nullable=False, unique=True),
     sa.Column("name", sa.String(200), nullable=False, default=""),
     sa.Column("password_hash", sa.String(300), nullable=False),
-    sa.Column("role", sa.String(20), nullable=False, default="member"),  # admin | member
+    sa.Column("role", sa.String(20), nullable=False, default="member"),  # member | admin (ver permissions.py)
+    sa.Column("active", sa.Boolean, nullable=False, default=True),  # false: no puede entrar ni recibe correos
+    sa.Column("must_change_password", sa.Boolean, nullable=False, default=False),  # clave temporal: cambiar al entrar
+    sa.Column("perm_overrides", sa.JSON),  # {"grant": [...], "deny": [...]} sobre los permisos del rol
     _ts("created_at", default=utcnow),
 )
 

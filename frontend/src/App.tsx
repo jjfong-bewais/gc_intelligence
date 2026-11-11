@@ -2,8 +2,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { api } from "./api";
+import { Perm, RequirePerm } from "./auth";
 import { IconLogout, IconSearch } from "./components/icons";
 import Alerts from "./pages/Alerts";
+import ChangePassword from "./pages/ChangePassword";
 import Dashboard from "./pages/Dashboard";
 import Favorites from "./pages/Favorites";
 import Guide from "./pages/Guide";
@@ -15,12 +17,16 @@ import Search from "./pages/Search";
 import Settings from "./pages/Settings";
 import Suppliers from "./pages/Suppliers";
 import TenderDetail from "./pages/TenderDetail";
+import Users from "./pages/Users";
 
-const GROUPS: { title: string; items: [string, string][] }[] = [
-  { title: "Descubrir", items: [["/", "Resumen"], ["/search", "Buscar"], ["/recommendations", "Para ti"], ["/opportunities", "Oportunidades"]] },
-  { title: "Mi trabajo", items: [["/favorites", "Seguimiento"], ["/inventory", "Inventario"], ["/alerts", "Alertas"]] },
-  { title: "Mercado", items: [["/suppliers", "Proveedores"]] },
+type NavItem = [to: string, label: string, perm?: Perm];
+
+const GROUPS: { title: string; items: NavItem[] }[] = [
+  { title: "Descubrir", items: [["/", "Resumen"], ["/search", "Buscar", "search"], ["/recommendations", "Para ti", "recommendations"], ["/opportunities", "Oportunidades", "opportunities"]] },
+  { title: "Mi trabajo", items: [["/favorites", "Seguimiento", "favorites"], ["/inventory", "Inventario", "inventory"], ["/alerts", "Alertas", "alerts"]] },
+  { title: "Mercado", items: [["/suppliers", "Proveedores", "suppliers"]] },
   { title: "Ayuda", items: [["/guide", "Guía"]] },
+  { title: "Administración", items: [["/users", "Usuarios", "admin"]] },
 ];
 
 const linkCls = ({ isActive }: { isActive: boolean }) =>
@@ -38,6 +44,8 @@ export default function App() {
   const nav = useNavigate();
   const loc = useLocation();
   const me = useQuery({ queryKey: ["me"], queryFn: () => api("/auth/me"), retry: false });
+  const perms: string[] = me.data?.permissions ?? [];
+  const groups = GROUPS.map((g) => ({ ...g, items: g.items.filter(([, , perm]) => !perm || perms.includes(perm)) })).filter((g) => g.items.length);
 
   // ⌘K / Ctrl+K abre la búsqueda desde cualquier pantalla.
   useEffect(() => {
@@ -53,8 +61,9 @@ export default function App() {
   if (me.isLoading) return <div className="flex min-h-screen items-center justify-center"><div className="h-6 w-6 animate-spin rounded-full border-2 border-stone-200 border-t-zinc-900" aria-label="Cargando" /></div>;
   if (!me.data) return <Login />;
   const u = me.data;
-  const initials = String(u.org_name ?? u.email ?? "?").split(/\s+/).map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
   const logout = async () => { await api("/auth/logout", { method: "POST" }); qc.clear(); nav("/"); location.reload(); };
+  if (u.must_change_password) return <ChangePassword onLogout={logout} />;
+  const initials = String(u.org_name ?? u.email ?? "?").split(/\s+/).map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
 
   return (
     <div className="min-h-screen md:flex">
@@ -67,7 +76,7 @@ export default function App() {
           <kbd className="rounded border border-stone-200 px-1.5 font-sans text-[11px]">⌘K</kbd>
         </button>
         <nav aria-label="Principal" className="flex flex-col gap-5">
-          {GROUPS.map((g) => (
+          {groups.map((g) => (
             <div key={g.title} className="flex flex-col gap-0.5">
               <div className="eyebrow px-2.5 pb-1.5">{g.title}</div>
               {g.items.map(([to, label]) => <NavLink key={to} to={to} end={to === "/"} className={linkCls}>{label}</NavLink>)}
@@ -91,7 +100,7 @@ export default function App() {
           <button type="button" onClick={logout} aria-label="Cerrar sesión" className="btn-icon border-transparent"><IconLogout /></button>
         </div>
         <nav aria-label="Principal" className="-mx-1 flex gap-1 overflow-x-auto pb-1">
-          {[...GROUPS.flatMap((g) => g.items), ["/settings", "Ajustes"]].map(([to, label]) => (
+          {[...groups.flatMap((g) => g.items), ["/settings", "Ajustes"]].map(([to, label]) => (
             <NavLink key={to} to={to} end={to === "/"} className={linkCls}>{label}</NavLink>
           ))}
         </nav>
@@ -106,16 +115,17 @@ export default function App() {
           )}
           <Routes>
             <Route path="/" element={<Dashboard />} />
-            <Route path="/search" element={<Search />} />
-            <Route path="/tenders/:nog" element={<TenderDetail />} />
-            <Route path="/recommendations" element={<Recommendations />} />
-            <Route path="/opportunities" element={<Opportunities />} />
-            <Route path="/inventory" element={<Inventory />} />
-            <Route path="/favorites" element={<Favorites />} />
-            <Route path="/alerts" element={<Alerts />} />
-            <Route path="/suppliers" element={<Suppliers />} />
-            <Route path="/suppliers/:sid" element={<Suppliers />} />
+            <Route path="/search" element={<RequirePerm perm="search"><Search /></RequirePerm>} />
+            <Route path="/tenders/:nog" element={<RequirePerm perm="search"><TenderDetail /></RequirePerm>} />
+            <Route path="/recommendations" element={<RequirePerm perm="recommendations"><Recommendations /></RequirePerm>} />
+            <Route path="/opportunities" element={<RequirePerm perm="opportunities"><Opportunities /></RequirePerm>} />
+            <Route path="/inventory" element={<RequirePerm perm="inventory"><Inventory /></RequirePerm>} />
+            <Route path="/favorites" element={<RequirePerm perm="favorites"><Favorites /></RequirePerm>} />
+            <Route path="/alerts" element={<RequirePerm perm="alerts"><Alerts /></RequirePerm>} />
+            <Route path="/suppliers" element={<RequirePerm perm="suppliers"><Suppliers /></RequirePerm>} />
+            <Route path="/suppliers/:sid" element={<RequirePerm perm="suppliers"><Suppliers /></RequirePerm>} />
             <Route path="/guide" element={<Guide />} />
+            <Route path="/users" element={<RequirePerm perm="admin"><Users /></RequirePerm>} />
             <Route path="/settings" element={<Settings user={u} />} />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>

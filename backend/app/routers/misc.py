@@ -9,7 +9,8 @@ from fastapi.responses import HTMLResponse
 from ..config import settings
 from ..db import get_conn
 from ..models import ingest_file, saved_search, tender, tender_item, party
-from ..security import admin_user, current_user, read_link
+from ..permissions import Perm, require
+from ..security import current_user, read_link
 from ..services.alerts import run_all
 from ..services.embeddings import embed_pending
 from ..services.search import FACET_COLUMNS, NONE_VALUE, accepting_cond, open_cond
@@ -82,7 +83,7 @@ def buyers(q: str = "", user=Depends(current_user), conn=Depends(get_conn)):
 
 
 @router.get("/admin/status")
-def status(user=Depends(admin_user), conn=Depends(get_conn)):
+def status(user=Depends(require(Perm.ADMIN)), conn=Depends(get_conn)):
     files = conn.execute(sa.select(ingest_file).order_by(ingest_file.c.key)).mappings().all()
     return {
         "tenders": conn.execute(sa.select(sa.func.count()).select_from(tender)).scalar(),
@@ -94,12 +95,12 @@ def status(user=Depends(admin_user), conn=Depends(get_conn)):
 
 
 @router.post("/admin/alerts/run")
-def admin_alerts(user=Depends(admin_user), conn=Depends(get_conn)):
+def admin_alerts(user=Depends(require(Perm.ADMIN)), conn=Depends(get_conn)):
     return run_all(conn, force=True)
 
 
 @router.post("/admin/embed")
-def admin_embed(user=Depends(admin_user), conn=Depends(get_conn)):
+def admin_embed(user=Depends(require(Perm.ADMIN)), conn=Depends(get_conn)):
     return embed_pending(conn)
 
 

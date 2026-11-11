@@ -18,9 +18,15 @@ fly certs add api.tudominio.com
 ```
 Web y API deben estar en subdominios del **mismo sitio** (`app.` y `api.`) para que la cookie de sesión httpOnly funcione.
 
-Primer usuario:
+Primer administrador (el único alta por consola; los demás usuarios se crean desde la plataforma):
 ```bash
-fly ssh console -C "python -m app.cli create-user tu@correo.com 'contraseña-larga' --org 'Tu Empresa' --nit 1234567"
+fly ssh console -C "python -m app.cli create-user tu@correo.com 'contraseña-larga' --role admin --org 'Tu Empresa'"
+```
+Después entra a **Usuarios** (menú, solo administradores) y usa *Nuevo usuario*: el cliente recibe por correo una contraseña temporal y debe cambiarla en su primer acceso. No existe registro público.
+
+**Al actualizar desde una versión anterior:** las columnas nuevas (`active`, `must_change_password`, `perm_overrides`) se agregan solas al arrancar. Los usuarios que ya existían con rol `admin` conservan ese rol (puede ver y administrar todos los usuarios); revisa cuáles son clientes y pásalos a usuario normal:
+```bash
+fly ssh console -C "python -m app.cli set-role cliente@empresa.com member"
 ```
 
 ## 3. Web — Cloudflare Pages

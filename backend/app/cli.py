@@ -18,7 +18,10 @@ def main(argv: list[str] | None = None) -> int:
     u = sub.add_parser("create-user", help="crea organización y usuario")
     u.add_argument("email"); u.add_argument("password")
     u.add_argument("--name", default=""); u.add_argument("--org", default="")
-    u.add_argument("--role", default="admin"); u.add_argument("--nit", action="append", default=[])
+    u.add_argument("--role", default="member", choices=["member", "admin"])
+    u.add_argument("--nit", action="append", default=[])
+    r = sub.add_parser("set-role", help="cambia el rol de un usuario (member | admin)")
+    r.add_argument("email"); r.add_argument("role", choices=["member", "admin"])
     i = sub.add_parser("ingest", help="descarga e importa archivos mensuales de Guatecompras")
     i.add_argument("--months-back", type=int, default=2, help="0 = todo el año")
     i.add_argument("--only", nargs="*", help="p. ej. 2026-09 2026-10")
@@ -39,17 +42,21 @@ def main(argv: list[str] | None = None) -> int:
         from .demo.seed import seed_demo
         seed_demo(a.historical, a.open, a.reset)
     elif a.cmd == "create-user":
-        from .models import app_user, org_supplier, organization
         from .schema import init_db
-        from .security import hash_password
+        from .services.users import UserError, create_user
         init_db()
-        with engine.begin() as c:
-            org = c.execute(sa.insert(organization).values(name=a.org or a.email)).inserted_primary_key[0]
-            for n in a.nit:
-                c.execute(sa.insert(org_supplier).values(org_id=org, supplier_id=n if n.startswith("GT-NIT-") else f"GT-NIT-{n}"))
-            c.execute(sa.insert(app_user).values(org_id=org, email=a.email.lower(), name=a.name, role=a.role,
-                                                 password_hash=hash_password(a.password)))
+        nits = tuple(n if n.startswith("GT-NIT-") else f"GT-NIT-{n}" for n in a.nit)
+        try:
+            with engine.begin() as c:
+                create_user(c, email=a.email, name=a.name, company=a.org, role=a.role, password=a.password, nits=nits)
+        except UserError as e:
+            print(f"Error: {e}"); return 1
         print("Usuario creado")
+    elif a.cmd == "set-role":
+        from .models import app_user
+        with engine.begin() as c:
+            n = c.execute(sa.update(app_user).where(app_user.c.email == a.email.strip().lower()).values(role=a.role)).rowcount
+        print("Rol actualizado" if n else "No existe ese usuario")
     elif a.cmd == "ingest":
         from .ingest.sync import sync
         from .schema import init_db

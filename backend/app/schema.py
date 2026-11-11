@@ -18,6 +18,9 @@ NEW_COLUMNS = [
     ("tender", "buyer_type", "VARCHAR(120)"),
     ("saved_search", "max_items", "INTEGER NOT NULL DEFAULT 5"),
     ("org_supplier", "label", "VARCHAR(200) NOT NULL DEFAULT ''"),
+    ("app_user", "active", "BOOLEAN NOT NULL DEFAULT TRUE"),
+    ("app_user", "must_change_password", "BOOLEAN NOT NULL DEFAULT FALSE"),
+    ("app_user", "perm_overrides", "JSON"),
 ]
 
 

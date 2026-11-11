@@ -27,7 +27,6 @@ class Settings(BaseSettings):
     cookie_samesite: str = "lax"
     cookie_domain: str | None = None
     cors_origins: str = ""  # lista separada por comas
-    allow_signup: bool = False
 
     # Embeddings: "local" (demo, sin red) u "openai"
     embeddings_provider: str = "local"
