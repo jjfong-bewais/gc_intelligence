@@ -1,6 +1,7 @@
 """Envío de correo: console (imprime), file (guarda .html en la bandeja de salida) o resend."""
 from __future__ import annotations
 
+import logging
 import re
 import time
 from pathlib import Path
@@ -9,10 +10,15 @@ import httpx
 
 from ..config import settings
 
+log = logging.getLogger("uvicorn.error")  # sale en los logs de Fly
+
 
 def send_email(to: str, subject: str, html: str) -> bool:
     prov = settings.mail_provider
     if prov == "resend":
+        if not settings.resend_api_key:
+            log.error("correo: RESEND_API_KEY no está configurada; no se envió «%s» a %s", subject, to)
+            return False
         for attempt in range(3):
             try:
                 r = httpx.post(
@@ -23,10 +29,13 @@ def send_email(to: str, subject: str, html: str) -> bool:
                 )
                 if r.status_code < 300:
                     return True
+                # Resend explica el motivo en el cuerpo (dominio sin verificar, clave inválida…); no incluye datos sensibles.
+                log.error("correo: Resend respondió %s para «%s» (from=%s): %s", r.status_code, subject,
+                          settings.mail_from, r.text[:300])
                 if r.status_code < 500 and r.status_code != 429:
                     return False
-            except httpx.HTTPError:
-                pass
+            except httpx.HTTPError as e:
+                log.error("correo: no se pudo contactar a Resend (%s)", type(e).__name__)
             time.sleep(1 + attempt)
         return False
     if prov == "file":
