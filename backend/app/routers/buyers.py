@@ -28,10 +28,12 @@ def profile(name: str = Query(..., min_length=2), user=Depends(require(Perm.SEAR
                   sa.func.sum(award.c.amount))
         .select_from(award.join(tender, tender.c.ocid == award.c.ocid)).where(base, award.c.supplier_id.is_not(None))
         .group_by(award.c.supplier_id, award.c.supplier_name).order_by(sa.desc("n")).limit(10)).all()
-    classes = conn.execute(
-        sa.select(sa.func.substr(tender.c.unspsc_main, 1, 6), sa.func.count().label("n"))
-        .where(base, tender.c.unspsc_main.is_not(None)).group_by(sa.func.substr(tender.c.unspsc_main, 1, 6))
-        .order_by(sa.desc("n")).limit(8)).all()
+    # Se agrupa por clase en Python: en Postgres substr(col, :1, :2) del SELECT y del GROUP BY no se reconocen como la misma expresión.
+    by_class: dict[str, int] = {}
+    for code, k in conn.execute(sa.select(tender.c.unspsc_main, sa.func.count())
+                                .where(base, tender.c.unspsc_main.is_not(None)).group_by(tender.c.unspsc_main)):
+        by_class[code[:6]] = by_class.get(code[:6], 0) + k
+    classes = sorted(by_class.items(), key=lambda x: -x[1])[:8]
     methods = conn.execute(
         sa.select(tender.c.method_details, sa.func.count().label("n")).where(base, tender.c.method_details.is_not(None))
         .group_by(tender.c.method_details).order_by(sa.desc("n")).limit(6)).all()
