@@ -2,12 +2,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FormEvent, useState } from "react";
 import { api } from "../api";
 import { useMe } from "../auth";
-import { Empty, ErrorBox, Loading, Page } from "../components/ui";
+import { Empty, ErrorBox, Loading, Page, useFeedback } from "../components/ui";
 import { date } from "../format";
 
 type User = {
   id: number; email: string; name: string; company: string | null; role: "member" | "admin"; active: boolean;
   must_change_password: boolean; n_nits: number; created_at: string | null;
+  last_active_at?: string | null; usage_status?: "active" | "at_risk" | "dormant" | "never";
 };
 type Saved = { user: User; email_sent?: boolean };
 
@@ -16,6 +17,7 @@ const ROLES: [User["role"], string][] = [["member", "Usuario"], ["admin", "Admin
 export default function Users() {
   const qc = useQueryClient();
   const me = useMe().data;
+  const { confirm: ask } = useFeedback();
   const list = useQuery({ queryKey: ["users"], queryFn: () => api<{ items: User[] }>("/users") });
   const [creating, setCreating] = useState(false);
   const [msg, setMsg] = useState("");
@@ -55,6 +57,9 @@ export default function Users() {
                   <span className="flex flex-wrap gap-1.5 pt-1 text-xs">
                     <span className="badge">{u.n_nits} NIT</span>
                     {u.created_at && <span className="badge">Desde {date(u.created_at)}</span>}
+                    <span className="badge">{u.last_active_at ? `Último acceso ${date(u.last_active_at)}` : "Sin accesos"}</span>
+                    {u.usage_status === "at_risk" && <span className="badge bg-amber-50 text-amber-800">En riesgo</span>}
+                    {u.usage_status === "dormant" && <span className="badge bg-red-50 text-red-800">Inactivo</span>}
                     {u.must_change_password && <span className="badge bg-amber-50 text-amber-800">Aún no entra</span>}
                     {!u.active && <span className="badge bg-red-50 text-red-800">Desactivado</span>}
                   </span>
@@ -67,7 +72,7 @@ export default function Users() {
                   <button className="btn" onClick={() => { setMsg(""); reset.mutate(u.id); }} disabled={reset.isPending}>Reenviar clave</button>
                   {!self && <>
                     <button className="btn" onClick={() => { setMsg(""); patch.mutate({ id: u.id, active: !u.active }); }}>{u.active ? "Desactivar" : "Activar"}</button>
-                    <button className="action-pill is-danger" onClick={() => { if (confirm(`¿Eliminar a ${u.email}? Se borran también sus NIT, inventario, favoritos y alertas.`)) { setMsg(""); del.mutate(u.id); } }}>Eliminar</button>
+                    <button className="action-pill is-danger" onClick={async () => { if (await ask({ title: `¿Eliminar a ${u.email}?`, body: "Se borran también sus NIT, inventario, seguimiento y alertas. No se puede deshacer.", confirmLabel: "Eliminar", danger: true, typeToConfirm: u.company || u.email })) { setMsg(""); del.mutate(u.id); } }}>Eliminar</button>
                   </>}
                 </div>
               </div>

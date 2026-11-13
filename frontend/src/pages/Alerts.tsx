@@ -4,7 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { api, Tender } from "../api";
 import { IconBell } from "../components/icons";
 import TenderCard from "../components/TenderCard";
-import { Empty, ErrorBox, Loading, Page } from "../components/ui";
+import { Empty, ErrorBox, Loading, Page, useFeedback } from "../components/ui";
 import { describe, fromSaved, SavedCombo } from "../filters";
 import { dateTime, num } from "../format";
 import { HelpLink } from "./Guide";
@@ -12,6 +12,7 @@ import { HelpLink } from "./Guide";
 const FREQ: Record<string, string> = { immediate: "Cada actualización", daily: "Diario", weekly: "Semanal" };
 
 export default function Alerts() {
+  const { confirm: ask } = useFeedback();
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["saved"], queryFn: () => api<{ items: SavedCombo[] }>("/saved-searches") });
   const [msg, setMsg] = useState("");
@@ -29,7 +30,7 @@ export default function Alerts() {
       actions={<button className="btn" onClick={() => run.mutate()} disabled={run.isPending || !items.some((s) => s.active)}>{run.isPending ? "Enviando…" : "Enviar ahora"}</button>}>
       {msg && <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-[13px] text-green-800">{msg}</div>}
       {q.isLoading ? <Loading rows={3} /> : q.error ? <ErrorBox error={q.error} /> : items.length ? (
-        <div className="list">{items.map((s) => <Row key={s.id} s={s} onUpdate={(n) => upd.mutate(n)} onDelete={() => confirm("¿Eliminar esta combinación?") && del.mutate(s.id)} />)}</div>
+        <div className="list">{items.map((s) => <Row key={s.id} s={s} onUpdate={(n) => upd.mutate(n)} onDelete={async () => (await ask({ title: "¿Eliminar esta combinación?", confirmLabel: "Eliminar", danger: true })) && del.mutate(s.id)} />)}</div>
       ) : <Empty icon={<IconBell size={28} />} action={<Link to="/search" className="btn mt-2">Ir a Buscar</Link>}>No tienes combinaciones guardadas. Elige filtros y usa “Guardar combinación”.</Empty>}
     </Page>
   );

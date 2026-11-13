@@ -126,6 +126,7 @@ def history(user=Depends(current_user), conn=Depends(get_conn)):
 class FavBody(BaseModel):
     status: str = "por_cotizar"
     note: str = ""
+    my_price: float | None = None
 
 
 @router.get("/favorites")
@@ -135,6 +136,8 @@ def list_favs(user=Depends(require(Perm.FAVORITES)), conn=Depends(get_conn)):
     notes = {r["ocid"]: r for r in rows}
     for i in items:
         i["note"] = notes[i["ocid"]]["note"]
+        i["my_price"] = notes[i["ocid"]]["my_price"]
+        i["saved_at"] = notes[i["ocid"]]["created_at"].isoformat() if notes[i["ocid"]]["created_at"] else None
     return {"items": items}
 
 
@@ -143,13 +146,15 @@ def put_fav(ocid: str, body: FavBody, request: Request, user=Depends(require(Per
     _need_tender(conn, ocid)
     if body.status not in FAV_STATUS:
         raise HTTPException(400, "Estado inválido")
+    if body.my_price is not None and body.my_price < 0:
+        raise HTTPException(400, "El precio debe ser un número positivo")
     cur = conn.execute(sa.select(favorite.c.ocid).where(favorite.c.user_id == user["id"], favorite.c.ocid == ocid)).first()
     usage.note(request, ocid=ocid, status=body.status, action="update" if cur else "save")
     if cur:
         conn.execute(sa.update(favorite).where(favorite.c.user_id == user["id"], favorite.c.ocid == ocid)
-                     .values(status=body.status, note=body.note))
+                     .values(status=body.status, note=body.note, my_price=body.my_price))
     else:
-        conn.execute(sa.insert(favorite).values(user_id=user["id"], ocid=ocid, status=body.status, note=body.note, created_at=utcnow()))
+        conn.execute(sa.insert(favorite).values(user_id=user["id"], ocid=ocid, status=body.status, note=body.note, my_price=body.my_price, created_at=utcnow()))
     return {"ok": True}
 
 

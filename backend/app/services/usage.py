@@ -36,6 +36,7 @@ _VIEW = {"GET": "view"}
 _CRUD = {"GET": "view", "POST": "create", "PUT": "update", "DELETE": "delete"}
 RULES: list[tuple[str, str, dict[str, str]]] = [
     ("/tenders/search", "search", {"POST": "search"}),
+    ("/tenders/{nog}/competitors", "tender_detail", {"GET": "competitors"}),
     ("/tenders/{nog}/similar", "tender_detail", {"GET": "similar"}),
     ("/tenders/{nog}/price-comparables", "tender_detail", {"GET": "price_comparables"}),
     ("/tenders/{nog}", "tender_detail", _VIEW),
@@ -43,6 +44,7 @@ RULES: list[tuple[str, str, dict[str, str]]] = [
     ("/opportunities", "opportunities", _VIEW),
     ("/dashboard", "dashboard", _VIEW),
     ("/suppliers", "suppliers", _VIEW),
+    ("/buyers", "buyers", _VIEW),
     ("/favorites", "favorites", {"GET": "view", "PUT": "save", "DELETE": "remove"}),
     ("/feedback", "feedback", {"PUT": "vote"}),
     ("/saved-searches", "alerts", _CRUD),
@@ -62,8 +64,8 @@ SKIP = ("/health", "/auth/me", "/catalogs", "/telemetry", "/admin", "/data-cover
 PAGES: list[tuple[str, str]] = [
     ("/search", "search"), ("/tenders", "tender_detail"), ("/recommendations", "recommendations"),
     ("/opportunities", "opportunities"), ("/favorites", "favorites"), ("/inventory", "inventory"),
-    ("/alerts", "alerts"), ("/suppliers", "suppliers"), ("/guide", "guide"), ("/settings", "settings"),
-    ("/users", "admin_users"), ("/metrics", "admin_metrics"),
+    ("/alerts", "alerts"), ("/suppliers", "suppliers"), ("/market", "suppliers"), ("/buyers", "buyers"), ("/guide", "guide"), ("/settings", "settings"),
+    ("/users", "admin_users"), ("/metrics", "admin_metrics"), ("/admin", "admin_users"),
 ]
 
 

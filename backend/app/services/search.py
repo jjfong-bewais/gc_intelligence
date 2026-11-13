@@ -227,11 +227,13 @@ def search_tenders(
     conds = list(extra_conds) if extra_conds is not None else build_conds(f)
     q = (q or "").strip()
     if not q:
-        total = conn.execute(sa.select(sa.func.count()).select_from(tender).where(*conds)).scalar_one()
         order = tender.c.published_at.desc()
-        if sort == "deadline":
+        if sort == "oldest":  # los que llevan más tiempo abiertos (la fecha de cierre aún no existe)
+            order = tender.c.published_at.asc()
+        elif sort == "deadline":
             conds = conds + [tender.c.deadline_at.is_not(None)]
             order = tender.c.deadline_at.asc()
+        total = conn.execute(sa.select(sa.func.count()).select_from(tender).where(*conds)).scalar_one()
         rows = conn.execute(
             sa.select(tender.c.ocid).where(*conds).order_by(order).limit(limit).offset(offset)
         ).all()
@@ -264,6 +266,30 @@ def iso(dt: datetime | None) -> str | None:
     return dt.isoformat() + "Z" if dt else None
 
 
+MIN_REFERENCE = 5  # adjudicaciones mínimas para mostrar un precio de referencia
+
+
+def class_reference(conn: sa.Connection, classes: set[str]) -> dict[str, dict]:
+    """Mediana de adjudicación y oferentes típicos por clase UNSPSC (6 dígitos).
+    Solo incluye clases con al menos MIN_REFERENCE adjudicaciones."""
+    import statistics
+    out: dict[str, dict] = {}
+    for cls in {c for c in classes if c}:
+        rows = conn.execute(
+            sa.select(sa.func.sum(award.c.amount), tender.c.n_tenderers)
+            .select_from(award.join(tender, tender.c.ocid == award.c.ocid))
+            .where(tender.c.unspsc_main.like(f"{cls}%"), award.c.amount.is_not(None), award.c.amount > 0,
+                   sa.func.lower(sa.func.coalesce(award.c.status, "")).not_in(("cancelled", "unsuccessful", "withdrawn")))
+            .group_by(award.c.ocid, tender.c.n_tenderers).limit(500)).all()
+        if len(rows) < MIN_REFERENCE:
+            continue
+        amounts = [float(r[0]) for r in rows]
+        bidders = [r[1] for r in rows if r[1]]
+        out[cls] = {"median": float(statistics.median(amounts)), "n": len(amounts),
+                    "typical_bidders": round(sum(bidders) / len(bidders), 1) if bidders else None}
+    return out
+
+
 def hydrate(conn: sa.Connection, hits: list[dict], user_id: int | None = None) -> list[dict]:
     """Completa cada resultado con datos del concurso, adjudicación, favorito y feedback."""
     if not hits:
@@ -278,19 +304,25 @@ def hydrate(conn: sa.Connection, hits: list[dict], user_id: int | None = None) -
     ):
         awards.setdefault(a[0], []).append(a)
     favs: dict[str, str] = {}
+    my_prices: dict[str, float | None] = {}
     fbs: dict[str, int] = {}
     if user_id:
         favs = {r[0]: r[1] for r in conn.execute(
             sa.select(favorite.c.ocid, favorite.c.status).where(favorite.c.user_id == user_id, favorite.c.ocid.in_(ocids)))}
+        my_prices = {r[0]: r[1] for r in conn.execute(
+            sa.select(favorite.c.ocid, favorite.c.my_price).where(favorite.c.user_id == user_id, favorite.c.ocid.in_(ocids)))}
         fbs = {r[0]: r[1] for r in conn.execute(
             sa.select(feedback.c.ocid, feedback.c.signal).where(feedback.c.user_id == user_id, feedback.c.ocid.in_(ocids)))}
     now = utcnow()
+    refs = class_reference(conn, {(t["unspsc_main"] or "")[:6] for t in rows.values()})
     out = []
     for h in hits:
         t = rows.get(h["ocid"])
         if not t:
             continue
         aw = awards.get(h["ocid"], [])
+        ref = refs.get((t["unspsc_main"] or "")[:6])
+        pub = t["published_at"]
         out.append({
             "ocid": t["ocid"], "nog": t["nog"], "title": t["title"], "status": t["status"],
             "status_details": t["status_details"],
@@ -301,6 +333,10 @@ def hydrate(conn: sa.Connection, hits: list[dict], user_id: int | None = None) -
             "n_tenderers": t["n_tenderers"], "n_items": t["n_items"], "unspsc": t["unspsc_main"],
             "awarded_total": sum(a[1] or 0 for a in aw) if aw else None,
             "winners": sorted({a[2] for a in aw})[:3],
+            "days_since_published": (now - pub).days if pub else None,
+            "reference_price": ref["median"] if ref else None, "reference_n": ref["n"] if ref else 0,
+            "typical_bidders": ref["typical_bidders"] if ref else None,
+            "my_price": my_prices.get(t["ocid"]),
             "favorite": favs.get(t["ocid"]), "feedback": fbs.get(t["ocid"], 0),
             "score": h.get("score"), "reason": h.get("reason", ""),
             "portal_url": PORTAL.format(nog=t["nog"]),

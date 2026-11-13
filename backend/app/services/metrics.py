@@ -18,7 +18,7 @@ from ..models import app_user, organization, usage_event as ev, usage_session as
 FEATURE_LABELS = {
     "dashboard": "Resumen", "search": "Buscar", "tender_detail": "Detalle de concurso", "recommendations": "Para ti",
     "opportunities": "Oportunidades", "favorites": "Seguimiento", "inventory": "Inventario", "alerts": "Alertas",
-    "suppliers": "Proveedores", "guide": "Guía", "settings": "Ajustes",
+    "suppliers": "Proveedores", "buyers": "Entidades", "guide": "Guía", "settings": "Ajustes",
 }
 # Acciones que cuentan para el puntaje de engagement de cada usuario: (función, acción) → peso
 SCORE = {

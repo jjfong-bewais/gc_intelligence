@@ -48,8 +48,9 @@ def dashboard(f: str = Query("", description=FILTERS_HELP), user=Depends(current
     sids = _sids(conn, user)
     open_total = conn.execute(sa.select(sa.func.count()).select_from(tender).where(open_cond(), *conds)).scalar()
     new_7d = conn.execute(sa.select(sa.func.count()).select_from(tender).where(open_cond(), tender.c.first_seen_at > now - timedelta(days=7), *conds)).scalar()
-    closing = conn.execute(sa.select(tender.c.ocid).where(open_cond(), tender.c.deadline_at.between(now, now + timedelta(days=3)), *conds)
-                           .order_by(tender.c.deadline_at).limit(5)).scalars().all()
+    # La fecha de cierre solo se publica cuando el concurso cierra: lo "reciente" se mide por publicación.
+    latest = conn.execute(sa.select(tender.c.ocid).where(open_cond(), *conds)
+                          .order_by(tender.c.published_at.desc()).limit(6)).scalars().all()
     prof = build_profile(conn, sids, user["id"])
     recs = recommend_open(conn, prof, k=5, exclude=set(), conds=conds)
     inv_n = conn.execute(sa.select(sa.func.count()).select_from(inventory_item).where(inventory_item.c.org_id == user["org_id"])).scalar()
@@ -69,7 +70,8 @@ def dashboard(f: str = Query("", description=FILTERS_HELP), user=Depends(current
         "kpis": {"open": open_total, "new_7d": new_7d, "favorites": favs, "inventory_items": inv_n,
                  "inventory_matches": len(inv), "awarded_total": float(won or 0)},
         "filtered": bool(conds),
-        "closing_soon": hydrate(conn, [{"ocid": o} for o in closing], user["id"]),
+        "latest_open": hydrate(conn, [{"ocid": o} for o in latest], user["id"]),
+        "closing_soon": [],
         "recommended": hydrate(conn, recs, user["id"]),
         "inventory_matches": hydrate(conn, inv, user["id"]),
         "monthly": [{"month": m, "count": n} for m, n in monthly if m],

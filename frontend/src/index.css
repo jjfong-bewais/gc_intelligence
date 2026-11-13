@@ -6,6 +6,7 @@
   html { color-scheme: light; }
   body { @apply bg-stone-50 font-sans text-zinc-900 antialiased; font-feature-settings: "cv11", "ss01"; }
   a { @apply text-brand-800 hover:text-brand-900; }
+  h1 { @apply font-display; }
   :where(a, button, select, [tabindex]):focus-visible { @apply outline-none ring-2 ring-brand-500/60 ring-offset-2 ring-offset-stone-50; }
 }
 
@@ -16,7 +17,7 @@
 
   /* Botones */
   .btn { @apply inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-stone-200 bg-white px-3.5 text-[13px] font-medium text-zinc-900 transition-colors hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-50; }
-  .btn-primary { @apply border-zinc-900 bg-zinc-900 text-white hover:bg-zinc-800; }
+  .btn-primary { @apply border-brand-700 bg-brand-700 text-white hover:bg-brand-800 hover:text-white; }
   .btn-icon { @apply inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-600 transition-colors hover:bg-stone-50 hover:text-zinc-900; }
   .btn-icon.is-on { @apply border-brand-200 bg-brand-50 text-brand-700; }
   .action-pill { @apply inline-flex min-h-8 items-center rounded-full bg-brand-50 px-3.5 text-[11px] font-semibold uppercase tracking-[0.04em] text-brand-700 transition-colors hover:bg-brand-100 disabled:opacity-50; }
@@ -45,10 +46,24 @@
   /* Texto */
   .muted { @apply text-[13px] text-stone-600; }
   .eyebrow { @apply text-[11px] font-medium uppercase tracking-[0.06em] text-stone-600; }
-  .h-section { @apply text-base font-semibold tracking-tight; }
+  .h-section { @apply font-display text-base font-semibold tracking-tight; }
+  .font-num { @apply font-display tabular-nums; }
 
   /* Tablas */
   table { @apply w-full border-collapse text-[13px]; }
   th { @apply px-3 py-2 text-left text-[11px] font-medium uppercase tracking-[0.06em] text-stone-600 first:pl-0 last:pr-0; }
   td { @apply border-t border-stone-100 px-3 py-3 align-top first:pl-0 last:pr-0; }
+}
+
+@layer components {
+  /* Barra superior */
+  .topnav-link { @apply inline-flex min-h-9 items-center rounded-lg px-3 text-[13px] font-medium text-white/80 transition-colors hover:bg-white/10 hover:text-white; }
+  .topnav-link.is-active { @apply bg-white/15 text-white; }
+  /* Pestañas de sección */
+  .tabs { @apply flex gap-1 overflow-x-auto border-b border-stone-200; }
+  .tab { @apply -mb-px inline-flex min-h-10 shrink-0 items-center border-b-2 border-transparent px-3 text-[13px] font-medium text-stone-600 hover:text-zinc-900; }
+  .tab.is-active { @apply border-brand-600 text-brand-800; }
+  /* Señales de precio y novedad */
+  .tag-new { @apply inline-flex items-center rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-semibold text-brand-700; }
+  .tag-ref { @apply inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-900; }
 }

@@ -3,10 +3,11 @@ import { useRef, useState } from "react";
 import { api, Tender } from "../api";
 import { IconUpload } from "../components/icons";
 import TenderCard from "../components/TenderCard";
-import { Empty, ErrorBox, Loading, Page, Section } from "../components/ui";
+import { Empty, ErrorBox, Loading, Page, Section, useFeedback } from "../components/ui";
 import { sentenceCase } from "../format";
 
 export default function Inventory() {
+  const { confirm: ask } = useFeedback();
   const qc = useQueryClient();
   const file = useRef<HTMLInputElement>(null);
   const [msg, setMsg] = useState("");
@@ -24,7 +25,7 @@ export default function Inventory() {
       actions={<>
         <input ref={file} type="file" accept=".csv,text/csv" hidden onChange={(e) => e.target.files?.[0] && up.mutate(e.target.files[0])} />
         <button className="btn btn-primary" onClick={() => file.current?.click()} disabled={up.isPending}><IconUpload size={15} />{up.isPending ? "Importando…" : "Importar CSV"}</button>
-        {n > 0 && <button className="btn-ghost" onClick={() => confirm("¿Borrar todo el inventario?") && clear.mutate()}>Vaciar</button>}
+        {n > 0 && <button className="btn-ghost" onClick={async () => (await ask({ title: "¿Vaciar el inventario?", body: "Se borran todos los productos cargados.", confirmLabel: "Vaciar", danger: true })) && clear.mutate()}>Vaciar</button>}
       </>}>
       {msg && <div className="rounded-lg border border-stone-200 bg-white px-3 py-2 text-[13px]">{msg}</div>}
       {inv.isLoading ? <Loading /> : inv.error ? <ErrorBox error={inv.error} /> : (

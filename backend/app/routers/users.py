@@ -44,7 +44,17 @@ def _full(conn: sa.Connection, uid: int) -> dict:
 
 @router.get("")
 def list_users(user=Depends(admin), conn=Depends(get_conn)):
-    return {"items": [_out(u) for u in svc.list_users(conn)]}
+    from ..models import usage_session as ss
+    from ..services.metrics import _status
+    last = {r[0]: r[1] for r in conn.execute(sa.select(ss.c.user_id, sa.func.max(ss.c.last_seen_at)).group_by(ss.c.user_id))}
+    items = []
+    for u in svc.list_users(conn):
+        o = _out(u)
+        la = last.get(u["id"])
+        o["last_active_at"] = la.isoformat() if la else None
+        o["usage_status"] = _status(la)
+        items.append(o)
+    return {"items": items}
 
 
 @router.post("")

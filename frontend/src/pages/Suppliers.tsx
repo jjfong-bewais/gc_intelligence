@@ -4,7 +4,7 @@ import { Link, useParams } from "react-router-dom";
 import { api, Tender } from "../api";
 import { IconSearch } from "../components/icons";
 import TenderCard from "../components/TenderCard";
-import { Empty, ErrorBox, Kpi, KpiStrip, Loading, Page, Section, Segmented } from "../components/ui";
+import { Empty, ErrorBox, Kpi, KpiStrip, Loading, MERCADO_TABS, Page, Section, Segmented, TabNav } from "../components/ui";
 import { money, nameCase, num, supplierName } from "../format";
 
 export default function Suppliers() {
@@ -17,6 +17,7 @@ function List() {
   const r = useQuery({ queryKey: ["sup", q], queryFn: () => api(`/suppliers?q=${encodeURIComponent(q)}&limit=30`), placeholderData: (p) => p });
   return (
     <Page title="Proveedores" subtitle="Consulta qué ha ganado y cotizado cualquier proveedor del Estado.">
+      <TabNav tabs={MERCADO_TABS} />
       <label className="search-box">
         <IconSearch size={18} className="text-stone-600" /><span className="sr-only">Buscar proveedor</span>
         <input className="min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-stone-500" placeholder="Nombre o NIT…" value={q} onChange={(e) => setQ(e.target.value)} />

@@ -23,7 +23,7 @@ export default function Dashboard() {
     <div className="flex flex-col gap-8">
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-col gap-1">
-          <h1 className="text-[26px] font-semibold leading-tight tracking-tight">{greeting()}</h1>
+          <h1 className="text-[26px] font-semibold leading-tight tracking-tight">Hoy · {greeting()}</h1>
           <p className="text-sm text-stone-600">{todayLong()} · datos de Guatecompras</p>
         </div>
         <form onSubmit={submit} role="search" className="flex min-h-11 w-full max-w-[340px] items-center gap-2.5 rounded-xl border border-stone-200 bg-white px-3.5 focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/20">
@@ -88,16 +88,19 @@ function Body({ d }: { d: any }) {
         </section>
 
         <section className="card flex flex-col gap-3 px-6">
-          <h2 className="h-section">Cierran en los próximos 3 días</h2>
-          {d.closing_soon.length ? (
+          <div className="flex items-baseline justify-between">
+            <h2 className="h-section">Publicados recientemente</h2>
+            <Link to="/search" className="text-[13px] font-medium">Ver todos →</Link>
+          </div>
+          {d.latest_open?.length ? (
             <div className="-mx-6 divide-y divide-stone-100 border-t border-stone-100">
-              {d.closing_soon.slice(0, 4).map((t: Tender) => <TenderCard key={t.ocid} t={t} context="dashboard" />)}
+              {d.latest_open.slice(0, 4).map((t: Tender) => <TenderCard key={t.ocid} t={t} context="dashboard" />)}
             </div>
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center gap-2 py-6 text-center">
               <IconClock size={28} className="text-stone-400" />
-              <span className="text-sm text-stone-700">Nada cierra pronto</span>
-              <span className="text-[13px] text-stone-600">Aquí aparecerán los concursos vigentes que cierran en los próximos días.</span>
+              <span className="text-sm text-stone-700">Sin publicaciones recientes</span>
+              <span className="text-[13px] text-stone-600">Los concursos vigentes más nuevos aparecen aquí. La fecha de cierre solo se publica cuando el concurso cierra.</span>
             </div>
           )}
         </section>

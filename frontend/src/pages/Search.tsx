@@ -5,7 +5,7 @@ import { api, Tender } from "../api";
 import FilterPanel, { WithFilters } from "../components/FilterPanel";
 import { IconSearch, IconX } from "../components/icons";
 import TenderCard from "../components/TenderCard";
-import { Empty, ErrorBox, Loading, Page, Segmented } from "../components/ui";
+import { CONCURSOS_TABS, Empty, ErrorBox, Loading, Page, Segmented, TabNav } from "../components/ui";
 import { clean, describe, Filters, fromSaved, SavedCombo, useViewFilters } from "../filters";
 import { num } from "../format";
 import { HelpLink } from "./Guide";
@@ -49,7 +49,8 @@ export default function Search() {
     onLoad={(c) => apply({ ...form, q: c.q ?? "", mode: (c.mode as Mode) ?? "hybrid" })} />;
 
   return (
-    <Page title={<span className="inline-flex items-center gap-2">Buscar concursos <HelpLink section="buscar" /></span>}>
+    <Page title={<span className="inline-flex items-center gap-2">Concursos <HelpLink section="buscar" /></span>}>
+      <TabNav tabs={CONCURSOS_TABS} />
       <WithFilters panel={panel} f={filters}>
       <form onSubmit={submit} role="search" className="flex flex-col gap-3">
         <div className="flex flex-wrap gap-2">
@@ -78,7 +79,7 @@ export default function Search() {
           {applied.q ? "ordenados por relevancia" : (
             <label>ordenar por{" "}
               <select value={form.sort} onChange={(e) => apply({ ...form, sort: e.target.value })} className="cursor-pointer bg-transparent font-medium text-zinc-900 outline-none">
-                <option value="recent">más recientes</option><option value="deadline">cierre más próximo</option>
+                <option value="recent">más recientes</option><option value="oldest">más antiguos primero</option>
               </select>
             </label>
           )}

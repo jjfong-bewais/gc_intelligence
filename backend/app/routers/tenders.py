@@ -76,3 +76,26 @@ def similar(nog: int, status: str = Query("awarded"), limit: int = 12, user=Depe
 @router.get("/{nog}/price-comparables")
 def comparables(nog: int, user=Depends(require(Perm.SEARCH)), conn=Depends(get_conn)):
     return price_comparables(conn, _by_nog(conn, nog))
+
+
+@router.get("/{nog}/competitors")
+def competitors(nog: int, user=Depends(require(Perm.SEARCH)), conn=Depends(get_conn)):
+    """Quién suele ganar en la misma clase UNSPSC y con la misma entidad compradora."""
+    ocid = _by_nog(conn, nog)
+    t = conn.execute(sa.select(tender.c.unspsc_main, tender.c.buyer_name).where(tender.c.ocid == ocid)).first()
+    cls = (t[0] or "")[:6]
+
+    def top(extra) -> list[dict]:
+        rows = conn.execute(
+            sa.select(award.c.supplier_id, award.c.supplier_name, sa.func.count(sa.distinct(award.c.ocid)), sa.func.sum(award.c.amount))
+            .select_from(award.join(tender, tender.c.ocid == award.c.ocid))
+            .where(award.c.ocid != ocid, award.c.supplier_id.is_not(None), extra)
+            .group_by(award.c.supplier_id, award.c.supplier_name)
+            .order_by(sa.desc(sa.func.count(sa.distinct(award.c.ocid))), sa.desc(sa.func.sum(award.c.amount))).limit(8)).all()
+        return [{"id": r[0], "name": r[1], "n": r[2], "amount": float(r[3] or 0)} for r in rows]
+
+    return {
+        "unspsc_class": cls or None,
+        "in_class": top(tender.c.unspsc_main.like(f"{cls}%")) if cls else [],
+        "with_buyer": top(tender.c.buyer_name == t[1]) if t[1] else [],
+    }

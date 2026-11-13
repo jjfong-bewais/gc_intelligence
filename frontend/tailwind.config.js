@@ -4,9 +4,12 @@ export default {
   darkMode: "class",
   theme: {
     extend: {
-      fontFamily: { sans: ["Inter", "system-ui", "-apple-system", "Segoe UI", "sans-serif"] },
+      fontFamily: {
+        sans: ["Inter", "system-ui", "-apple-system", "Segoe UI", "sans-serif"],
+        display: ["Space Grotesk", "Inter", "system-ui", "sans-serif"],
+      },
       colors: {
-        brand: { 50: "#eef2ff", 100: "#e0e7ff", 200: "#c7d2fe", 500: "#6366f1", 600: "#4f46e5", 700: "#4338ca", 800: "#3730a3", 900: "#1e1b4b" },
+        brand: { 50: "#e9f7f1", 100: "#cdeee2", 200: "#9fdcc6", 500: "#1f9d78", 600: "#0f8566", 700: "#0b6b52", 800: "#0a5642", 900: "#073b2d" },
       },
       borderRadius: { xl: "0.75rem", "2xl": "0.875rem" },
     },

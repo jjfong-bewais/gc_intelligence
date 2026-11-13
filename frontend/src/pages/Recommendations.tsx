@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { api, Tender } from "../api";
 import FilterPanel, { WithFilters } from "../components/FilterPanel";
 import TenderCard from "../components/TenderCard";
-import { Empty, ErrorBox, Loading, Page } from "../components/ui";
+import { CONCURSOS_TABS, Empty, ErrorBox, Loading, Page, TabNav } from "../components/ui";
 import { countActive, filterQuery, useViewFilters } from "../filters";
 import { HelpLink } from "./Guide";
 
@@ -19,6 +19,7 @@ export default function Recommendations() {
   return (
     <Page title={<span className="inline-flex items-center gap-2">Para ti <HelpLink section="para-ti" /></span>} subtitle={<>Concursos vigentes parecidos a lo que tus NIT han ganado o cotizado y a lo que marcaste como “Me interesa”. Lo que marcas como “No me interesa” baja concursos similares.
       {q.data && q.data.profile_size > 0 && ` Perfil construido con ${q.data.profile_size} concursos.`}</>}>
+      <TabNav tabs={CONCURSOS_TABS} />
       <WithFilters f={filters} panel={<FilterPanel value={filters} onChange={setFilters} lockOpen />}>
         {q.isLoading ? <Loading rows={6} /> : q.error ? <ErrorBox error={q.error} /> : q.data!.items.length
           ? <div className={`list transition-opacity ${q.isFetching ? "opacity-60" : ""}`}>{q.data!.items.map((t) => <TenderCard key={t.ocid} t={t} context="recommendation" />)}</div>

@@ -15,7 +15,6 @@ export default function Settings({ user }: { user: any }) {
       <AccountCard user={user} />
       <PasswordCard />
       <NitsCard />
-      <HistoryCard />
     </Page>
   );
 }
@@ -236,7 +235,7 @@ const pct = (v: number | null | undefined) => (v == null ? "—" : `${new Intl.N
 const WON = "#4338ca";
 const NOT_WON = "#7c86f2";
 
-function HistoryCard() {
+export function HistoryCard() {
   const h = useQuery({ queryKey: ["org-history"], queryFn: () => api<History>("/org/history") });
   return (
     <section className="flex flex-col gap-4">

@@ -45,6 +45,10 @@ export function FavButton({ t, label }: { t: Tender; label?: boolean }) {
   );
 }
 
+/** "Hoy", "Hace 3 días": la fecha de cierre solo existe cuando el concurso ya cerró, así que lo reciente se mide por publicación. */
+export const publishedLabel = (days: number | null | undefined) =>
+  days == null ? "" : days <= 0 ? "Publicado hoy" : days === 1 ? "Publicado ayer" : `Publicado hace ${days} días`;
+
 export function StatusBadge({ t }: { t: Tender }) {
   if (t.is_open) {
     const d = daysLeft(t.deadline_at);
@@ -55,8 +59,9 @@ export function StatusBadge({ t }: { t: Tender }) {
 
 /** Fila de concurso. Úsala dentro de un contenedor `.list`. */
 export default function TenderCard({ t, context, extra }: { t: Tender; context: string; extra?: ReactNode }) {
+  const isNew = t.is_open && t.days_since_published != null && t.days_since_published <= 2;
   const meta = t.is_open
-    ? closeLabel(t.deadline_at)
+    ? (t.deadline_at ? closeLabel(t.deadline_at) : publishedLabel(t.days_since_published))
     : t.awarded_total != null
       ? `Adjudicado ${money(t.awarded_total)}${t.winners[0] ? ` · ${supplierName(t.winners[0])}` : ""}`
       : t.status_details;
@@ -75,11 +80,21 @@ export default function TenderCard({ t, context, extra }: { t: Tender; context: 
         <div className="text-[13px] text-stone-600">
           {nameCase(t.buyer_name)}{t.unit_name ? ` · ${nameCase(t.unit_name)}` : ""}{t.department ? ` · ${nameCase(t.department)}` : ""} · NOG {t.nog}
         </div>
+        {t.is_open && (t.reference_price != null || t.typical_bidders != null) && (
+          <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs">
+            {t.reference_price != null && (
+              <span className="tag-ref" title={`Mediana de ${t.reference_n} adjudicaciones de la misma categoría`}>Referencia {money(t.reference_price)} · {t.reference_n} adjudicaciones</span>
+            )}
+            {t.typical_bidders != null && <span className="text-stone-600">~{Math.round(t.typical_bidders)} oferentes típicos</span>}
+          </div>
+        )}
+        {t.my_price != null && <div className="text-xs font-medium text-brand-800">Mi precio {money(t.my_price)}</div>}
         {t.reason && <div className="text-xs text-stone-600">{t.reason.replace(/«([^»]+)»/g, (_, q) => `«${sentenceCase(q)}»`)}</div>}
         {extra}
       </div>
       <div className="flex shrink-0 flex-col items-end gap-2">
         <div className="flex items-center gap-1.5">
+          {isNew && <span className="tag-new">Nuevo</span>}
           <StatusBadge t={t} />
           <Feedback t={t} context={context} />
           <FavButton t={t} />

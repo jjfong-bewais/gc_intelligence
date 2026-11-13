@@ -24,5 +24,6 @@ export type Tender = {
   method: string; category?: string; department?: string | null; entity_type?: string | null; buyer_name: string; unit_name: string; published_at: string | null; deadline_at: string | null;
   n_tenderers: number | null; n_items: number; unspsc: string | null; awarded_total: number | null;
   winners: string[]; favorite: string | null; feedback: number; score: number | null; reason: string;
-  portal_url: string; note?: string; matches?: any[];
+  portal_url: string; note?: string; my_price?: number | null; saved_at?: string | null;
+  days_since_published?: number | null; reference_price?: number | null; reference_n?: number; typical_bidders?: number | null; matches?: any[];
 };

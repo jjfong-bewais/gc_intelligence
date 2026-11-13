@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "../api";
 import FilterPanel, { WithFilters } from "../components/FilterPanel";
-import { Empty, ErrorBox, Loading, Page } from "../components/ui";
+import { CONCURSOS_TABS, Empty, ErrorBox, Loading, Page, TabNav } from "../components/ui";
 import { filterQuery, useViewFilters } from "../filters";
 import { money, nameCase, sentenceCase, supplierName } from "../format";
 import { HelpLink } from "./Guide";
@@ -14,6 +14,7 @@ export default function Opportunities() {
   const d = q.data;
   return (
     <Page title={<span className="inline-flex items-center gap-2">Oportunidades <HelpLink section="oportunidades" /></span>} subtitle="Categorías donde participan proveedores parecidos a ti (por mezcla de clases UNSPSC) y donde tú aún no participas. Los filtros limitan qué concursos cuentan.">
+      <TabNav tabs={CONCURSOS_TABS} />
       <WithFilters f={filters} panel={<FilterPanel value={filters} onChange={setFilters} />}>
       {q.isLoading ? <Loading rows={4} /> : q.error ? <ErrorBox error={q.error} /> : !d.peers.length ? (
         <Empty action={<Link to="/settings" className="btn mt-2">Configurar NIT</Link>}>Agrega tus NIT en Ajustes para encontrar proveedores semejantes y las clases donde participan.</Empty>

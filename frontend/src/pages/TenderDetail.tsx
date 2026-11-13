@@ -1,11 +1,11 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { api, Tender } from "../api";
 import { IconArrowLeft, IconExternal } from "../components/icons";
-import TenderCard, { FAV_LABELS, FavButton, Feedback, StatusBadge } from "../components/TenderCard";
-import { ErrorBox, Loading, Segmented } from "../components/ui";
+import TenderCard, { FAV_LABELS, FavButton, Feedback, StatusBadge, publishedLabel } from "../components/TenderCard";
+import { ErrorBox, Loading, Segmented, useFeedback } from "../components/ui";
 import { HelpLink } from "./Guide";
 import { closeLabel, date, money, money2, nameCase, num, sentenceCase, stripHtml, supplierName } from "../format";
 
@@ -15,6 +15,7 @@ export default function TenderDetail() {
   const qc = useQueryClient();
   const t = useQuery({ queryKey: ["tender", nog], queryFn: () => api(`/tenders/${nog}`) });
   const comp = useQuery({ queryKey: ["comp", nog], queryFn: () => api(`/tenders/${nog}/price-comparables`) });
+  const competitors = useQuery({ queryKey: ["competitors", nog], queryFn: () => api<{ in_class: Rival[]; with_buyer: Rival[]; unspsc_class: string | null }>(`/tenders/${nog}/competitors`) });
   const sim = useQuery({ queryKey: ["similar", nog], queryFn: () => api<{ items: Tender[] }>(`/tenders/${nog}/similar?status=awarded`) });
 
   const back = (
@@ -47,18 +48,14 @@ export default function TenderDetail() {
       </header>
 
       <section aria-label="Datos clave" className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-stone-200 bg-stone-100 lg:grid-cols-4 [&>*]:bg-white">
-        <Fact k="Entidad" v={nameCase(d.buyer_name)} sub={d.unit_name ? nameCase(d.unit_name) : undefined} />
-        <Fact k="Publicado" v={date(d.published_at)} sub={d.n_tenderers != null ? `${d.n_tenderers} oferente(s)` : undefined} />
-        <Fact k="Cierre de ofertas" v={d.deadline_at ? date(d.deadline_at) : <span className="text-stone-600">No publicado</span>} sub={d.deadline_at && d.is_open ? closeLabel(d.deadline_at) : undefined} />
+        <Fact k="Entidad" v={<Link to={`/buyers?name=${encodeURIComponent(d.buyer_name)}`} className="text-zinc-900 hover:text-brand-800">{nameCase(d.buyer_name)}</Link>} sub={d.unit_name ? nameCase(d.unit_name) : undefined} />
+        <Fact k="Publicado" v={date(d.published_at)} sub={d.n_tenderers != null ? `${d.n_tenderers} oferente(s)` : d.days_since_published != null ? publishedLabel(d.days_since_published) : undefined} />
+        <Fact k="Cierre de ofertas" v={d.deadline_at ? date(d.deadline_at) : <span className="text-stone-600">Se publica al cerrar</span>} sub={d.deadline_at && d.is_open ? closeLabel(d.deadline_at) : undefined} />
         <Fact k="Precio de referencia (mediana)" v={firstStats ? <span className="text-lg text-brand-800">{money(firstStats.median)}</span> : <span className="text-stone-600">Sin datos</span>}
           sub={firstStats ? `${firstStats.n} adjudicaciones comparables` : undefined} />
       </section>
 
-      {d.favorite ? (
-        <FavNote t={d} onSaved={() => qc.invalidateQueries({ queryKey: ["tender", nog] })} />
-      ) : (
-        <p className="text-[13px] text-stone-600">Sigue este concurso para registrar si lo cotizaste, ganaste o perdiste, y agregar notas.</p>
-      )}
+      <DecisionPanel t={d} stats={firstStats} bidders={d.typical_bidders} onSaved={() => { qc.invalidateQueries({ queryKey: ["tender", nog] }); qc.invalidateQueries({ queryKey: ["favs"] }); }} />
 
       <Block title={<span className="inline-flex items-center gap-2">¿A qué precio se ha adjudicado esto antes? <HelpLink section="detalle" label="Cómo leer los precios" /></span>} aside="precio unitario de adjudicaciones parecidas">
         {comp.isLoading ? <Loading rows={2} /> : comp.error ? <ErrorBox error={comp.error} /> : (
@@ -83,6 +80,15 @@ export default function TenderDetail() {
                 </div>
               </div>
             )}
+          </div>
+        )}
+      </Block>
+
+      <Block title="¿Quién suele ganar?" aside="adjudicaciones anteriores">
+        {competitors.isLoading ? <Loading rows={2} /> : competitors.error ? <ErrorBox error={competitors.error} /> : (
+          <div className="grid gap-6 md:grid-cols-2">
+            <RivalList title={`En la categoría ${competitors.data?.unspsc_class ?? ""}`} rows={competitors.data?.in_class ?? []} />
+            <RivalList title="Con esta misma entidad" rows={competitors.data?.with_buyer ?? []} />
           </div>
         )}
       </Block>
@@ -197,7 +203,7 @@ function ItemComparables({ c, multi }: { c: any; multi: boolean }) {
                   <XAxis dataKey="period" fontSize={11} tickLine={false} axisLine={false} stroke="#57534e" tickFormatter={(v) => String(v).replace("-T", " T")} padding={{ left: 12, right: 12 }} />
                   <YAxis fontSize={11} width={64} tickLine={false} axisLine={false} stroke="#57534e" tickFormatter={compact} domain={["auto", "auto"]} />
                   <Tooltip content={<TrendTooltip />} cursor={{ stroke: "#a8a29e", strokeDasharray: "3 3" }} />
-                  <Line type="monotone" dataKey="median" name="Mediana" stroke="#4f46e5" strokeWidth={2} dot={{ r: 3, fill: "#fff", strokeWidth: 2 }} activeDot={{ r: 5, fill: "#4f46e5", stroke: "#fff", strokeWidth: 2 }} />
+                  <Line type="monotone" dataKey="median" name="Mediana" stroke="#0b6b52" strokeWidth={2} dot={{ r: 3, fill: "#fff", strokeWidth: 2 }} activeDot={{ r: 5, fill: "#0b6b52", stroke: "#fff", strokeWidth: 2 }} />
                 </LineChart></ResponsiveContainer>
               </div>
             </div>
@@ -221,19 +227,77 @@ function ItemComparables({ c, multi }: { c: any; multi: boolean }) {
   );
 }
 
-function FavNote({ t, onSaved }: { t: Tender; onSaved: () => void }) {
-  const save = async (status: string, note: string) => { await api(`/favorites/${t.ocid}`, { method: "PUT", body: { status, note } }); onSaved(); };
+type Rival = { id: string; name: string; n: number; amount: number };
+
+function RivalList({ title, rows }: { title: string; rows: Rival[] }) {
   return (
-    <section aria-label="Mi estado" className="flex flex-wrap items-center gap-4 rounded-2xl border border-stone-200 bg-white px-5 py-3.5">
-      <span className="text-[13px] text-stone-600">Mi estado</span>
-      <div className="overflow-x-auto">
-        <Segmented label="Estado de seguimiento" value={t.favorite!} options={Object.entries(FAV_LABELS) as [string, string][]} onChange={(v) => save(v, t.note ?? "")} />
+    <div className="flex flex-col gap-2">
+      <h3 className="text-sm font-semibold">{title}</h3>
+      {rows.length ? (
+        <ol className="flex flex-col divide-y divide-stone-100 text-[13px]">
+          {rows.slice(0, 5).map((r) => (
+            <li key={r.id} className="flex items-baseline justify-between gap-3 py-1.5">
+              <Supplier id={r.id} name={r.name} />
+              <span className="shrink-0 text-xs text-stone-600 tabular-nums">{r.n} ganado{r.n === 1 ? "" : "s"} · {money(r.amount)}</span>
+            </li>))}
+        </ol>
+      ) : <p className="muted">Sin adjudicaciones registradas.</p>}
+    </div>
+  );
+}
+
+/** Mi decisión: estado, precio propio (numérico) comparado con el rango histórico, y nota. */
+function DecisionPanel({ t, stats, bidders, onSaved }: { t: Tender; stats?: { n: number; median: number; p25: number; p75: number }; bidders?: number | null; onSaved: () => void }) {
+  const { toast } = useFeedback();
+  const [price, setPrice] = useState(t.my_price != null ? String(t.my_price) : "");
+  const [note, setNote] = useState(t.note ?? "");
+  useEffect(() => { setPrice(t.my_price != null ? String(t.my_price) : ""); setNote(t.note ?? ""); }, [t.my_price, t.note, t.ocid]);
+  const save = async (status: string, patch: { note?: string; price?: string } = {}) => {
+    const p = (patch.price ?? price).trim();
+    const n = p === "" ? null : Number(p.replace(/,/g, ""));
+    if (n != null && (!Number.isFinite(n) || n < 0)) { toast("Escribe un precio válido, solo números", "error"); return; }
+    try {
+      await api(`/favorites/${t.ocid}`, { method: "PUT", body: { status, note: patch.note ?? note, my_price: n } });
+      toast("Guardado");
+      onSaved();
+    } catch (e) { toast((e as Error).message, "error"); }
+  };
+  const mine = price.trim() === "" ? null : Number(price.replace(/,/g, ""));
+  const verdict = stats && mine != null && Number.isFinite(mine)
+    ? mine < stats.p25 ? { tone: "text-amber-800", text: "Por debajo del rango habitual: compite fuerte, revisa tu margen." }
+      : mine > stats.p75 ? { tone: "text-amber-800", text: "Por encima del rango habitual: menos probable que gane por precio." }
+      : { tone: "text-brand-800", text: "Dentro del rango en que se suele adjudicar." }
+    : null;
+  return (
+    <section aria-label="Mi decisión" className="card flex flex-col gap-4 p-6">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="h-section">Mi decisión</h2>
+        {bidders != null && <span className="text-xs text-stone-600">~{Math.round(bidders)} oferentes típicos en esta categoría</span>}
       </div>
-      <label className="flex flex-[1_1_240px]">
-        <span className="sr-only">Nota</span>
-        <input className="input bg-stone-50" placeholder="Agregar una nota…" defaultValue={t.note ?? ""}
-          onBlur={(e) => e.target.value !== (t.note ?? "") && save(t.favorite!, e.target.value)} />
-      </label>
+      {!t.favorite ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="flex-1 text-[13px] text-stone-600">Sigue este concurso para anotar tu precio, su estado y notas.</p>
+          <button type="button" className="btn btn-primary" onClick={() => save("por_cotizar")}>Seguir concurso</button>
+        </div>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-[auto_220px_1fr]">
+          <div className="flex flex-col gap-1.5 text-[13px]">
+            <span className="text-stone-600">Estado</span>
+            <div className="overflow-x-auto"><Segmented label="Estado de seguimiento" value={t.favorite} options={Object.entries(FAV_LABELS) as [string, string][]} onChange={(v) => save(v)} /></div>
+          </div>
+          <label className="flex flex-col gap-1.5 text-[13px]">
+            <span className="text-stone-600">Mi precio (Q)</span>
+            <input className="input tabular-nums" inputMode="decimal" placeholder="0.00" value={price} onChange={(e) => setPrice(e.target.value)}
+              onBlur={() => price !== (t.my_price != null ? String(t.my_price) : "") && save(t.favorite!, { price })} />
+            {verdict && <span className={`text-xs ${verdict.tone}`}>{verdict.text}</span>}
+          </label>
+          <label className="flex flex-col gap-1.5 text-[13px]">
+            <span className="text-stone-600">Nota</span>
+            <input className="input" placeholder="Agregar una nota…" value={note} onChange={(e) => setNote(e.target.value)}
+              onBlur={() => note !== (t.note ?? "") && save(t.favorite!, { note })} />
+          </label>
+        </div>
+      )}
     </section>
   );
 }

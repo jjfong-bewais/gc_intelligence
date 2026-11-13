@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import __version__
 from .config import settings
-from .routers import auth, insights, metrics, misc, suppliers, tenders, users, workspace
+from .routers import auth, buyers, insights, metrics, misc, suppliers, tenders, users, workspace
 from .schema import init_db
 from .services import usage
 from .services.users import UserError
@@ -52,7 +52,7 @@ async def _user_error(_: Request, e: UserError):
 
 
 api = APIRouter(prefix="/api/v1")
-for r in (auth.router, users.router, tenders.router, suppliers.router, insights.router, workspace.router, misc.router, metrics.router):
+for r in (auth.router, users.router, tenders.router, suppliers.router, buyers.router, insights.router, workspace.router, misc.router, metrics.router):
     api.include_router(r)
 app.include_router(api)
 

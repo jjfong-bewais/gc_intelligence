@@ -53,6 +53,7 @@ favorite = sa.Table(
     sa.Column("ocid", sa.String(40), primary_key=True),
     sa.Column("status", sa.String(20), nullable=False, default="por_cotizar"),
     sa.Column("note", sa.Text, nullable=False, default=""),
+    sa.Column("my_price", sa.Float),  # precio que el usuario piensa ofertar (opcional)
     _ts("created_at", default=utcnow),
 )
 

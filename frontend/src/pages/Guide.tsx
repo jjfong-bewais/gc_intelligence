@@ -193,7 +193,7 @@ function Screens() {
           </table>
         </div>
         <Ul>
-          <li><B>Orden:</B> con texto, por relevancia. Sin texto, puedes ordenar por <i>más recientes</i> o <i>cierre más próximo</i>.</li>
+          <li><B>Orden:</B> con texto, por relevancia. Sin texto, puedes ordenar por <i>más recientes</i> o <i>más antiguos primero</i> (la fecha de cierre solo se publica cuando el concurso cierra).</li>
           <li>Por defecto, Buscar muestra solo concursos <B>Vigentes</B>. Quita ese filtro en “Estado del concurso” para ver también adjudicados, desiertos, etc.</li>
           <li>Se muestran 20 resultados por página.</li>
           <li>Desde cada resultado puedes marcar 👍/👎, seguir el concurso o abrir su detalle.</li>

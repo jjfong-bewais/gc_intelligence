@@ -225,3 +225,31 @@ def test_data_coverage(client):
     assert d["tenders"] > 0 and 0 < d["open"] <= d["tenders"]
     assert d["accepting"] <= d["open"]
     assert d["first_published"] and d["last_published"] >= d["first_published"]
+
+
+def test_my_price_and_reference_rule(client):
+    items = client.post("/api/v1/tenders/search", json={"q": "", "filters": {"status": "open"}, "limit": 10}).json()["items"]
+    for i in items:
+        # el precio de referencia solo existe con al menos 5 adjudicaciones comparables
+        assert i["reference_price"] is None or i["reference_n"] >= 5
+        assert "typical_bidders" in i and "days_since_published" in i
+    target = items[0]["ocid"]
+    assert client.put(f"/api/v1/favorites/{target}", json={"status": "por_cotizar", "my_price": 1234.5}).status_code == 200
+    fav = next(f for f in client.get("/api/v1/favorites").json()["items"] if f["ocid"] == target)
+    assert fav["my_price"] == 1234.5 and fav["saved_at"]
+    assert client.put(f"/api/v1/favorites/{target}", json={"status": "por_cotizar", "my_price": -1}).status_code == 400
+    client.delete(f"/api/v1/favorites/{target}")
+
+
+def test_competitors_and_buyer_profile(client):
+    it = client.post("/api/v1/tenders/search", json={"q": "", "filters": {"status": "open"}}).json()["items"][0]
+    c = client.get(f"/api/v1/tenders/{it['nog']}/competitors")
+    assert c.status_code == 200 and "in_class" in c.json() and "with_buyer" in c.json()
+    b = client.get("/api/v1/buyers/profile", params={"name": it["buyer_name"]})
+    assert b.status_code == 200 and b.json()["tenders"] >= 1
+    assert client.get("/api/v1/buyers/profile", params={"name": "No existe SA"}).status_code == 404
+
+
+def test_dashboard_latest_open(client):
+    d = client.get("/api/v1/dashboard").json()
+    assert "latest_open" in d and d["closing_soon"] == []
